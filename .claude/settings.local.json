@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --use-npm --eslint --yes)"
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --use-npm --eslint --yes)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(rm -f .claude/.env.example && rm -rf .next && echo \"removed: .claude/.env.example, .next/\")",
+      "Bash(git check-ignore *)",
+      "Bash(node -e ' *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\user1\\Desktop\\אוטומציה\\cloud-code\\library\\.claude"
     ]
   }
 }
