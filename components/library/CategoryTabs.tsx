@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import type { DocumentCategory } from "@/lib/types";
 import { PROTECTED_CATEGORY_NAMES } from "@/lib/constants";
+import { colorForName } from "@/lib/category-color";
 
 type Props = {
   categories: DocumentCategory[];
@@ -20,17 +21,28 @@ export default function CategoryTabs({
   counts,
 }: Props) {
   return (
-    <div className="flex flex-wrap gap-2">
-      <TabButton
-        active={selected === "all"}
+    <div className="flex flex-wrap gap-1.5">
+      {/* "All" tab — no dot */}
+      <button
         onClick={() => onSelect("all")}
-        label="הכל"
-        count={counts?.all}
-      />
+        className={`px-3.5 py-1.5 rounded-full border text-sm font-medium transition ${
+          selected === "all"
+            ? "bg-accent text-white border-accent shadow-sm"
+            : "bg-surface text-foreground border-border hover:border-border-strong hover:bg-accent-soft/60"
+        }`}
+      >
+        הכל
+        {typeof counts?.all === "number" && (
+          <CountBadge active={selected === "all"} value={counts.all} />
+        )}
+      </button>
+
       {categories.map((cat) => {
         const active = selected === cat.id;
         const isProtected = PROTECTED_CATEGORY_NAMES.includes(cat.name);
         const showDelete = !!onDelete && !isProtected;
+        const dotColor = colorForName(cat.name);
+
         return (
           <div
             key={cat.id}
@@ -39,20 +51,26 @@ export default function CategoryTabs({
                 ? "bg-accent text-white border-accent shadow-sm"
                 : "bg-surface text-foreground border-border hover:border-border-strong hover:bg-accent-soft/60"
             }`}
+            title={cat.description || cat.name}
           >
             <button
               onClick={() => onSelect(cat.id)}
-              className={`px-4 py-2 ${showDelete ? "pe-2" : ""}`}
+              className={`flex items-center gap-2 px-3.5 py-1.5 ${
+                showDelete ? "pe-2" : ""
+              }`}
             >
-              {cat.name}
+              <span
+                className={`size-2 rounded-full shrink-0 ${
+                  active ? "ring-2 ring-white/70" : ""
+                }`}
+                style={{ backgroundColor: active ? "#ffffff" : dotColor }}
+                aria-hidden="true"
+              />
+              <span className="truncate max-w-[180px] sm:max-w-[260px]">
+                {cat.name}
+              </span>
               {typeof counts?.[cat.id] === "number" && (
-                <span
-                  className={`ms-2 inline-flex items-center justify-center min-w-5 h-5 text-xs rounded-full px-1.5 ${
-                    active ? "bg-white/20 text-white" : "bg-accent-soft text-muted"
-                  }`}
-                >
-                  {counts[cat.id]}
-                </span>
+                <CountBadge active={active} value={counts[cat.id]} />
               )}
             </button>
             {showDelete && (
@@ -79,36 +97,14 @@ export default function CategoryTabs({
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count?: number;
-}) {
+function CountBadge({ active, value }: { active: boolean; value: number }) {
   return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 rounded-full border text-sm font-medium transition ${
-        active
-          ? "bg-accent text-white border-accent shadow-sm"
-          : "bg-surface text-foreground border-border hover:border-border-strong hover:bg-accent-soft/60"
+    <span
+      className={`ms-1.5 inline-flex items-center justify-center min-w-5 h-5 text-xs rounded-full px-1.5 ${
+        active ? "bg-white/20 text-white" : "bg-accent-soft text-muted"
       }`}
     >
-      {label}
-      {typeof count === "number" && (
-        <span
-          className={`ms-2 inline-flex items-center justify-center min-w-5 h-5 text-xs rounded-full px-1.5 ${
-            active ? "bg-white/20 text-white" : "bg-accent-soft text-muted"
-          }`}
-        >
-          {count}
-        </span>
-      )}
-    </button>
+      {value}
+    </span>
   );
 }

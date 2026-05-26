@@ -23,6 +23,7 @@ import ManageCategoriesModal from "./ManageCategoriesModal";
 import EditDocumentModal from "./EditDocumentModal";
 import { ToastProvider, useToast } from "./Toast";
 import { parseApiResponse, formatBytes } from "@/lib/utils";
+import { colorForName } from "@/lib/category-color";
 
 export default function LibraryClient() {
   return (
@@ -254,7 +255,7 @@ function LibraryInner() {
         </header>
 
         {/* Tabs */}
-        <div className="mb-5">
+        <div className="mb-3">
           <CategoryTabs
             categories={categories}
             selected={selectedCat}
@@ -262,6 +263,12 @@ function LibraryInner() {
             onDelete={handleDeleteCategory}
           />
         </div>
+
+        {/* Selected-category context bar */}
+        <SelectedCategoryBar
+          categories={categories}
+          selectedId={selectedCat}
+        />
 
         {/* Toolbar */}
         <div className="mb-4 bg-surface border border-border rounded-2xl p-2.5 flex flex-col md:flex-row md:items-center gap-2.5">
@@ -411,6 +418,37 @@ function LibraryInner() {
         onClose={() => setEditDoc(null)}
         onSaved={fetchDocs}
       />
+    </div>
+  );
+}
+
+function SelectedCategoryBar({
+  categories,
+  selectedId,
+}: {
+  categories: DocumentCategory[];
+  selectedId: string;
+}) {
+  if (selectedId === "all") return <div className="mb-5" />;
+  const cat = categories.find((c) => c.id === selectedId);
+  if (!cat) return <div className="mb-5" />;
+  const color = colorForName(cat.name);
+
+  return (
+    <div className="mb-5 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-surface border border-border">
+      <span
+        className="size-2.5 rounded-full shrink-0"
+        style={{ backgroundColor: color }}
+        aria-hidden="true"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-foreground truncate">
+          {cat.name}
+        </div>
+        {cat.description && (
+          <div className="text-xs text-muted truncate">{cat.description}</div>
+        )}
+      </div>
     </div>
   );
 }

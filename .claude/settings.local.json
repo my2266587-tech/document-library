@@ -6,7 +6,11 @@
       "Bash(npx tsc *)",
       "Bash(rm -f .claude/.env.example && rm -rf .next && echo \"removed: .claude/.env.example, .next/\")",
       "Bash(git check-ignore *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(cmdkey /list)",
+      "PowerShell(cmdkey /delete:git:https://github.com)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user1\\Desktop\\אוטומציה\\cloud-code\\library\\.claude"
