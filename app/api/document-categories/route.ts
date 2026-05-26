@@ -35,14 +35,36 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.name !== "string" || !body.name.trim()) {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "שם קטגוריה הוא שדה חובה" },
+        { status: 400 }
+      );
     }
 
+    const name = body.name.trim();
     const supabase = getSupabaseAdmin();
+
+    const { data: existing, error: existingErr } = await supabase
+      .from("document_categories")
+      .select("id")
+      .ilike("name", name)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingErr) {
+      console.error("[document-categories POST] dup-check error:", existingErr.message);
+    }
+    if (existing) {
+      return NextResponse.json(
+        { error: "קטגוריה בשם הזה כבר קיימת" },
+        { status: 409 }
+      );
+    }
+
     const { data, error } = await supabase
       .from("document_categories")
       .insert({
-        name: body.name.trim(),
+        name,
         description: body.description?.trim() || null,
         color: body.color?.trim() || null,
         sort_order: typeof body.sort_order === "number" ? body.sort_order : 0,
@@ -51,17 +73,23 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      console.error("[document-categories POST] supabase error:", error);
+      console.error("[document-categories POST] supabase error:", error.message);
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "קטגוריה בשם הזה כבר קיימת" },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
-        { error: `Database error: ${error.message}` },
+        { error: `שגיאת מסד נתונים: ${error.message}` },
         { status: 500 }
       );
     }
-    return NextResponse.json({ category: data }, { status: 201 });
+    return NextResponse.json({ ok: true, category: data }, { status: 201 });
   } catch (err) {
     console.error("[document-categories POST] exception:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown server error" },
+      { error: err instanceof Error ? err.message : "שגיאת שרת לא ידועה" },
       { status: 500 }
     );
   }

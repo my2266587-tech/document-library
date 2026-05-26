@@ -45,3 +45,38 @@ export function buildStoragePath(originalName: string): string {
   const rand = crypto.randomUUID();
   return `${yyyy}/${mm}/${rand}_${safe}`;
 }
+
+/**
+ * Safely read an API response. Always returns JSON-shaped data,
+ * never throws on parse, and only throws on !response.ok with a clear
+ * Hebrew message extracted from the server (or a fallback).
+ */
+export async function parseApiResponse<T = unknown>(
+  response: Response
+): Promise<T> {
+  const text = await response.text().catch(() => "");
+  let data: { error?: string; [k: string]: unknown } | null = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { error: text || "שגיאת שרת לא מזוהה" };
+  }
+
+  if (!response.ok) {
+    let message = data?.error;
+    if (!message) {
+      const lower = text.toLowerCase();
+      if (
+        response.status === 413 ||
+        lower.includes("request entity too large") ||
+        lower.includes("payload too large")
+      ) {
+        message = "הקובץ גדול מדי. נסי להעלות קובץ קטן יותר.";
+      }
+    }
+    throw new Error(message || "הבקשה נכשלה");
+  }
+
+  return (data ?? ({} as T)) as T;
+}

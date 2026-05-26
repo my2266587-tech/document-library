@@ -5,6 +5,7 @@ import Modal from "./Modal";
 import { Save } from "lucide-react";
 import type { DocumentCategory, DocumentWithCategory } from "@/lib/types";
 import { useToast } from "./Toast";
+import { parseApiResponse } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -54,13 +55,13 @@ export default function EditDocumentModal({
           notes: notes.trim() || null,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "שגיאה");
+      await parseApiResponse(res);
 
       toast.show("success", "המסמך עודכן");
       onSaved();
       onClose();
     } catch (err) {
+      console.error("[EditDocumentModal] error", err);
       toast.show("error", err instanceof Error ? err.message : "שגיאה");
     } finally {
       setBusy(false);

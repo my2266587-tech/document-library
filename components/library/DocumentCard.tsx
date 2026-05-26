@@ -1,8 +1,9 @@
 "use client";
 
-import { FileText, Eye, Download, Pencil, Trash2 } from "lucide-react";
+import { Eye, Download, Pencil, Trash2 } from "lucide-react";
 import type { DocumentWithCategory } from "@/lib/types";
 import { formatBytes, formatDate } from "@/lib/utils";
+import { FileTypeIcon } from "@/lib/file-icons";
 
 type Props = {
   doc: DocumentWithCategory;
@@ -14,46 +15,55 @@ type Props = {
 
 export default function DocumentCard({ doc, onView, onDownload, onEdit, onDelete }: Props) {
   return (
-    <div className="bg-surface border border-border rounded-2xl p-5 shadow-[0_1px_2px_rgba(47,42,37,0.04)] hover:shadow-md hover:border-border-strong transition flex flex-col gap-3">
+    <article className="group relative bg-surface border border-border rounded-2xl p-4 shadow-[0_1px_2px_rgba(47,42,37,0.04)] hover:shadow-md hover:border-border-strong hover:-translate-y-0.5 transition flex flex-col gap-3">
+      {/* Header */}
       <div className="flex items-start gap-3">
-        <div className="shrink-0 size-11 rounded-xl bg-accent-soft text-accent flex items-center justify-center">
-          <FileText className="size-5" />
-        </div>
+        <FileTypeIcon fileType={doc.file_type} size="md" />
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-foreground truncate" title={doc.title}>
+          <h3
+            className="font-semibold text-foreground truncate leading-tight"
+            title={doc.title}
+          >
             {doc.title}
           </h3>
-          <p className="text-xs text-muted truncate" title={doc.original_file_name}>
+          <p
+            className="text-xs text-muted truncate mt-0.5"
+            title={doc.original_file_name}
+          >
             {doc.original_file_name}
           </p>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 text-xs">
+      {/* Meta row */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {doc.category && (
           <span className="px-2 py-0.5 rounded-full bg-accent-soft text-accent font-medium">
             {doc.category.name}
           </span>
         )}
         {doc.file_type && (
-          <span className="px-2 py-0.5 rounded-full bg-background border border-border text-muted uppercase">
+          <span className="px-2 py-0.5 rounded-full bg-background border border-border text-muted uppercase tracking-wide font-medium">
             {doc.file_type}
           </span>
         )}
-        <span className="px-2 py-0.5 rounded-full bg-background border border-border text-muted">
-          {formatBytes(doc.file_size)}
-        </span>
       </div>
 
+      {/* Notes */}
       {doc.notes && (
-        <p className="text-sm text-muted line-clamp-2" title={doc.notes}>
+        <p className="text-sm text-muted line-clamp-2 leading-snug" title={doc.notes}>
           {doc.notes}
         </p>
       )}
 
-      <div className="text-xs text-muted">הועלה ב־{formatDate(doc.created_at)}</div>
+      {/* Footer meta */}
+      <div className="flex items-center justify-between text-xs text-muted pt-1">
+        <span>{formatDate(doc.created_at)}</span>
+        <span>{formatBytes(doc.file_size)}</span>
+      </div>
 
-      <div className="flex items-center gap-1 pt-2 border-t border-border mt-auto">
+      {/* Action bar */}
+      <div className="flex items-center gap-1 pt-3 border-t border-border mt-auto">
         <ActionBtn onClick={onView} icon={<Eye className="size-4" />} label="צפייה" />
         <ActionBtn onClick={onDownload} icon={<Download className="size-4" />} label="הורדה" />
         <ActionBtn onClick={onEdit} icon={<Pencil className="size-4" />} label="עריכה" />
@@ -64,7 +74,7 @@ export default function DocumentCard({ doc, onView, onDownload, onEdit, onDelete
           danger
         />
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -87,9 +97,10 @@ function ActionBtn({
           ? "text-[var(--danger)] hover:bg-[var(--danger-soft)]"
           : "text-foreground hover:bg-accent-soft"
       }`}
+      title={label}
     >
       {icon}
-      <span>{label}</span>
+      <span className="hidden xl:inline">{label}</span>
     </button>
   );
 }
