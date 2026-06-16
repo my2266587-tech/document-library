@@ -22,4 +22,4 @@ export function getSupabaseAdmin(): SupabaseClient<Database> {
   return cached;
 }
 
-export const DOCUMENTS_BUCKET = "library";
+export const DOCUMENTS_BUCKET = "documents-library";

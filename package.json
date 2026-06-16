@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "import:dry": "node scripts/import-to-storage.mjs",
+    "import:commit": "node scripts/import-to-storage.mjs --commit"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# one-time bulk import source files (uploaded to Supabase Storage, not committed)
+/import-files/
+
+# import run logs
+/logs/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

@@ -15,7 +15,7 @@
 2. שמור בצד את **Project URL** ואת **service_role** key (Settings → API).
 3. ב-SQL Editor הרץ את כל התוכן של [`supabase/schema.sql`](supabase/schema.sql).
    זה ייצור את הטבלאות `document_categories` ו-`documents_library`, אינדקסים, טריגרים, ויטען seed לקטגוריות הראשוניות (שדה חמד / כללי / אבחונים / שונות).
-4. ב-Storage → New bucket — צור bucket בשם **`library`** ו**ודא שהוא Private** (לא Public).
+4. ב-Storage → New bucket — צור bucket בשם **`documents-library`** ו**ודא שהוא Private** (לא Public).
 
 ### 2. הגדרת משתני סביבה
 
@@ -82,7 +82,7 @@ supabase/
 1. לחץ **העלאת מסמך**.
 2. בחר קובץ, הזן שם (אופציונלי), בחר קטגוריה ב"שדה חמד".
 3. לחץ **העלה**. אמורה להופיע הודעת הצלחה והכרטיס יופיע בעמוד.
-4. ב-Supabase Studio → Storage → bucket `library` הקובץ קיים תחת `YYYY/MM/<uuid>_<filename>`.
+4. ב-Supabase Studio → Storage → bucket `documents-library` הקובץ קיים תחת `YYYY/MM/<uuid>_<filename>`.
 5. בטבלה `documents_library` יש שורה חדשה עם `file_path` תואם.
 
 ### בדיקת העלאה מרובה
