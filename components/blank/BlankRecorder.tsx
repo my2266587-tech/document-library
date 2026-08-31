@@ -410,7 +410,7 @@ export default function BlankRecorder() {
                 sentences.map((s, i) => (
                   <p
                     key={s.id}
-                    className="group relative text-[20px] leading-[1.85] font-semibold mb-2.5 text-right pe-6"
+                    className="group relative text-[15px] leading-[1.7] font-semibold mb-1.5 text-right pe-6"
                     style={{ color: colorForIndex(i) }}
                   >
                     {s.text}
