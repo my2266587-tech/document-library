@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Upload,
@@ -12,6 +13,7 @@ import {
   Rows3,
   X,
   Filter,
+  Mic,
 } from "lucide-react";
 import type { DocumentCategory, DocumentWithCategory } from "@/lib/types";
 import CategoryTabs from "./CategoryTabs";
@@ -250,6 +252,13 @@ function LibraryInner() {
                 <FolderCog className="size-4" />
                 ניהול קטגוריות
               </button>
+              <Link
+                href="/blank"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-accent-soft hover:border-border-strong transition"
+              >
+                <Mic className="size-4" />
+                בלאנק מוקלט
+              </Link>
             </div>
           </div>
         </header>

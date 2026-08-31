@@ -1,0 +1,38 @@
+name: Supabase keep-alive
+
+# Free-tier Supabase projects are paused after ~7 days of inactivity.
+# This makes a tiny REST query every 2 days so the project stays awake,
+# independent of any local machine being on.
+#
+# One-time setup (repo → Settings → Secrets and variables → Actions):
+#   SUPABASE_URL               = https://uqaygublcnmgrodyczww.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY  = <the sb_secret_... key from .env.local>
+
+on:
+  schedule:
+    # 06:00 UTC on odd days of the month → roughly every 2 days.
+    - cron: "0 6 */2 * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST endpoint
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY secret."
+            exit 1
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            "$SUPABASE_URL/rest/v1/documents_library?select=id&limit=1" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+          echo "HTTP $code"
+          case "$code" in
+            2*) echo "Keep-alive ping succeeded." ;;
+            *)  echo "Keep-alive ping failed."; exit 1 ;;
+          esac
