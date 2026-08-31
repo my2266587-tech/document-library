@@ -11,6 +11,7 @@ import {
   Printer,
   ImageDown,
   BookMarked,
+  Pencil,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -90,11 +91,15 @@ export default function BlankRecorder() {
   const [micWarn, setMicWarn] = useState(false);
   const [livePreview, setLivePreview] = useState("");
   const [savingImage, setSavingImage] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
 
   const recognizerRef = useRef<SpeechRecognitionLike | null>(null);
   const wantRecordingRef = useRef(false);
   const restartAttemptsRef = useRef(0);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const editInputRef = useRef<HTMLInputElement | null>(null);
+  const cancelledEditRef = useRef(false);
 
   const railCells = useMemo(() => {
     const cells: { key: string; ch: string; color: string; offset: boolean }[] = [];
@@ -124,6 +129,33 @@ export default function BlankRecorder() {
   function clearAll() {
     setSentences([]);
   }
+
+  function startEditing(id: number, currentText: string) {
+    setEditingId(id);
+    setEditText(currentText);
+  }
+
+  function commitEdit(id: number) {
+    const trimmed = editText.trim();
+    setSentences((prev) =>
+      trimmed
+        ? prev.map((s) => (s.id === id ? { ...s, text: trimmed } : s))
+        : prev.filter((s) => s.id !== id)
+    );
+    setEditingId(null);
+  }
+
+  function cancelEditing() {
+    cancelledEditRef.current = true;
+    setEditingId(null);
+  }
+
+  useEffect(() => {
+    if (editingId !== null) {
+      editInputRef.current?.focus();
+      editInputRef.current?.select();
+    }
+  }, [editingId]);
 
   // ---- speech recognition setup ----
   useEffect(() => {
@@ -234,6 +266,15 @@ export default function BlankRecorder() {
         useCORS: true,
         onclone: (doc) => {
           doc.querySelectorAll("[data-export-hide]").forEach((el) => el.remove());
+          // A sentence mid-edit is an <input>; html2canvas can't paint form
+          // control values, so swap it for a plain span with the same text.
+          doc.querySelectorAll("input[data-export-swap-text]").forEach((el) => {
+            const input = el as HTMLInputElement;
+            const span = doc.createElement("span");
+            span.textContent = input.value;
+            span.style.color = input.style.color;
+            input.replaceWith(span);
+          });
         },
       });
       canvas.toBlob((blob) => {
@@ -407,24 +448,73 @@ export default function BlankRecorder() {
                   כאן ינחתו המשפטים שמקליטים או מקלידים — כל אחד בגוון כהה משלו.
                 </p>
               ) : (
-                sentences.map((s, i) => (
-                  <p
-                    key={s.id}
-                    className="group relative text-[20px] leading-[1.85] font-semibold mb-2.5 text-right pe-6"
-                    style={{ color: colorForIndex(i) }}
-                  >
-                    {s.text}
-                    <button
-                      type="button"
-                      onClick={() => removeSentence(s.id)}
-                      aria-label="מחיקת המשפט הזה"
-                      data-export-hide
-                      className="absolute -start-1 top-0.5 text-[15px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition text-muted hover:text-danger hover:bg-black/5"
+                sentences.map((s, i) => {
+                  const color = colorForIndex(i);
+                  const isEditing = editingId === s.id;
+                  return (
+                    <p
+                      key={s.id}
+                      className="group relative text-[15px] leading-[1.7] font-semibold mb-1.5 text-right pl-14"
+                      style={{ color }}
                     >
-                      ×
-                    </button>
-                  </p>
-                ))
+                      {isEditing ? (
+                        <input
+                          ref={editInputRef}
+                          type="text"
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              commitEdit(s.id);
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEditing();
+                            }
+                          }}
+                          onBlur={() => {
+                            if (cancelledEditRef.current) {
+                              cancelledEditRef.current = false;
+                              return;
+                            }
+                            commitEdit(s.id);
+                          }}
+                          data-export-swap-text
+                          className="w-full bg-transparent border-b border-dashed outline-none text-right font-semibold text-[15px]"
+                          style={{ color, borderColor: color }}
+                        />
+                      ) : (
+                        <span
+                          onClick={() => startEditing(s.id, s.text)}
+                          title="לחיצה לעריכה"
+                          className="cursor-text rounded px-0.5 -mx-0.5 hover:bg-black/5 transition"
+                        >
+                          {s.text}
+                        </span>
+                      )}
+                      {!isEditing && (
+                        <span className="absolute left-0 top-0 flex items-center gap-0.5" data-export-hide>
+                          <button
+                            type="button"
+                            onClick={() => startEditing(s.id, s.text)}
+                            aria-label="עריכת המשפט"
+                            className="p-1 rounded opacity-0 group-hover:opacity-100 transition text-muted hover:text-accent-hover hover:bg-black/5"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeSentence(s.id)}
+                            aria-label="מחיקת המשפט הזה"
+                            className="text-[15px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition text-muted hover:text-danger hover:bg-black/5"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )}
+                    </p>
+                  );
+                })
               )}
             </div>
 
