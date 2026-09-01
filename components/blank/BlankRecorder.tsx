@@ -80,10 +80,13 @@ const RAIL_ICONS = [
 ];
 const RAIL_ROWS = 34;
 
+type Sentence = { id: number; text: string };
+type PageMode = "full" | "card";
+
 let nextId = 1;
 
 export default function BlankRecorder() {
-  const [sentences, setSentences] = useState<{ id: number; text: string }[]>([]);
+  const [sentences, setSentences] = useState<Sentence[]>([]);
   const [manualText, setManualText] = useState("");
   const [recording, setRecording] = useState(false);
   const [micSupported, setMicSupported] = useState(true);
@@ -93,13 +96,21 @@ export default function BlankRecorder() {
   const [savingImage, setSavingImage] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  const [pageMode, setPageMode] = useState<PageMode>("full");
 
   const recognizerRef = useRef<SpeechRecognitionLike | null>(null);
   const wantRecordingRef = useRef(false);
   const restartAttemptsRef = useRef(0);
-  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const sheetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const editInputRef = useRef<HTMLInputElement | null>(null);
   const cancelledEditRef = useRef(false);
+
+  function sheetRefCallback(key: string) {
+    return (el: HTMLDivElement | null) => {
+      if (el) sheetRefs.current.set(key, el);
+      else sheetRefs.current.delete(key);
+    };
+  }
 
   const railCells = useMemo(() => {
     const cells: { key: string; ch: string; color: string; offset: boolean }[] = [];
@@ -254,51 +265,243 @@ export default function BlankRecorder() {
     }
   }
 
-  async function saveAsImage() {
-    const sheet = sheetRef.current;
-    if (!sheet || savingImage) return;
-    setSavingImage(true);
-    try {
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(sheet, {
-        backgroundColor: "#fffdf8",
-        scale: 2,
-        useCORS: true,
-        onclone: (doc) => {
-          doc.querySelectorAll("[data-export-hide]").forEach((el) => el.remove());
-          // A sentence mid-edit is an <input>; html2canvas can't paint form
-          // control values, so swap it for a plain span with the same text.
-          doc.querySelectorAll("input[data-export-swap-text]").forEach((el) => {
-            const input = el as HTMLInputElement;
-            const span = doc.createElement("span");
-            span.textContent = input.value;
-            span.style.color = input.style.color;
-            input.replaceWith(span);
-          });
-        },
-      });
+  async function captureFrame(el: HTMLDivElement) {
+    const { default: html2canvas } = await import("html2canvas");
+    return html2canvas(el, {
+      backgroundColor: "#fffdf8",
+      scale: 2,
+      useCORS: true,
+      onclone: (doc) => {
+        doc.querySelectorAll("[data-export-hide]").forEach((node) => node.remove());
+        // A sentence mid-edit is an <input>; html2canvas can't paint form
+        // control values, so swap it for a plain span with the same text.
+        doc.querySelectorAll("input[data-export-swap-text]").forEach((node) => {
+          const inputEl = node as HTMLInputElement;
+          const span = doc.createElement("span");
+          span.textContent = inputEl.value;
+          span.style.color = inputEl.style.color;
+          inputEl.replaceWith(span);
+        });
+      },
+    });
+  }
+
+  function downloadCanvas(canvas: HTMLCanvasElement, filename: string) {
+    return new Promise<void>((resolve) => {
       canvas.toBlob((blob) => {
         if (!blob) {
-          setSavingImage(false);
+          resolve();
           return;
         }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "בלאנק-מחר-אחר.png";
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-        setSavingImage(false);
+        resolve();
       }, "image/png");
-    } catch {
+    });
+  }
+
+  async function saveAsImage() {
+    if (savingImage) return;
+    setSavingImage(true);
+    try {
+      if (pageMode === "full") {
+        const el = sheetRefs.current.get("full");
+        if (el) {
+          const canvas = await captureFrame(el);
+          await downloadCanvas(canvas, "בלאנק-מחר-אחר.png");
+        }
+      } else {
+        const keys = sentences.length > 0 ? sentences.map((s) => `card-${s.id}`) : ["card-empty"];
+        for (let i = 0; i < keys.length; i++) {
+          const el = sheetRefs.current.get(keys[i]);
+          if (!el) continue;
+          const canvas = await captureFrame(el);
+          const suffix = keys.length > 1 ? `-${i + 1}` : "";
+          await downloadCanvas(canvas, `בלאנק-מחר-אחר${suffix}.png`);
+          if (i < keys.length - 1) await new Promise((r) => setTimeout(r, 250));
+        }
+      }
+    } finally {
       setSavingImage(false);
     }
   }
 
+  // ---------------------------------------------------------------------
+  // One letterhead frame: the בס"ד corner, the rail, a set of sentences,
+  // the logo/contact footer and the tags bar. `colorStart` lets a
+  // single-sentence card keep the same color it would have had in the
+  // full letterhead.
+  // ---------------------------------------------------------------------
+  function renderFrame(frameSentences: Sentence[], colorStart: number, refKey: string, isCard: boolean) {
+    // The letterhead is designed at a natural 700x990px box. A single-sentence
+    // card prints at 10.5 x 14.8cm (close to A6) — 990px is ~26.19cm at the
+    // CSS reference 96dpi, so zoom 0.56 shrinks the design to fit inside it
+    // (a hair under the exact 0.565 ratio, as a rounding safety margin — this
+    // must fit within the page height, or the whole last block, the tags
+    // bar, gets pushed onto a second physical page). This must be `zoom`,
+    // not `transform: scale` — a transform only repaints the box visually
+    // and does not affect print pagination, so the content would still be
+    // measured at its full 700x990px size and split across pages.
+    return (
+      <div
+        ref={sheetRefCallback(refKey)}
+        className={`relative w-full max-w-[700px] flex flex-col overflow-hidden shadow-[0_10px_30px_rgba(20,25,20,0.14)] print:shadow-none ${
+          isCard ? "print:w-[700px] print:[zoom:0.56]" : "print:max-w-none print:min-h-screen"
+        }`}
+        style={{ background: "#fffdf8", minHeight: 990 }}
+      >
+        <div
+          className="absolute top-[22px] right-[26px] z-[3] font-black text-[13px]"
+          style={{ color: "#143f3f" }}
+        >
+          בס&quot;ד
+        </div>
+
+        <div className="absolute inset-y-0 right-auto left-0 w-[74px] overflow-hidden z-[1] pt-[18px]">
+          <div className="grid grid-cols-2 gap-x-[14px] gap-y-[26px]">
+            {railCells.map((cell) => (
+              <span
+                key={cell.key}
+                className={`block text-center text-[19px] leading-none ${cell.offset ? "translate-y-5" : ""}`}
+                style={{ color: cell.color }}
+              >
+                {cell.ch}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative z-[2] flex-1 pt-[78px] pb-[30px] pr-[46px] pl-[110px]">
+          {frameSentences.length === 0 ? (
+            <p className="italic text-[15px] leading-[1.9]" style={{ color: "#b9b6a8" }} data-export-hide>
+              כאן ינחתו המשפטים שמקליטים או מקלידים — כל אחד בגוון כהה משלו.
+            </p>
+          ) : (
+            frameSentences.map((s, i) => {
+              const color = colorForIndex(colorStart + i);
+              const isEditing = editingId === s.id;
+              return (
+                <p
+                  key={s.id}
+                  className="group relative text-[15px] leading-[2] font-semibold mb-5 text-right pl-14"
+                  style={{ color }}
+                >
+                  {isEditing ? (
+                    <input
+                      ref={editInputRef}
+                      type="text"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitEdit(s.id);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEditing();
+                        }
+                      }}
+                      onBlur={() => {
+                        if (cancelledEditRef.current) {
+                          cancelledEditRef.current = false;
+                          return;
+                        }
+                        commitEdit(s.id);
+                      }}
+                      data-export-swap-text
+                      className="w-full bg-transparent border-b border-dashed outline-none text-right font-semibold text-[15px]"
+                      style={{ color, borderColor: color }}
+                    />
+                  ) : (
+                    <span
+                      onClick={() => startEditing(s.id, s.text)}
+                      title="לחיצה לעריכה"
+                      className="cursor-text rounded px-0.5 -mx-0.5 hover:bg-black/5 transition"
+                    >
+                      {s.text}
+                    </span>
+                  )}
+                  {!isEditing && (
+                    <span className="absolute left-0 top-0 flex items-center gap-0.5" data-export-hide>
+                      <button
+                        type="button"
+                        onClick={() => startEditing(s.id, s.text)}
+                        aria-label="עריכת המשפט"
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 transition text-muted hover:text-accent-hover hover:bg-black/5"
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeSentence(s.id)}
+                        aria-label="מחיקת המשפט הזה"
+                        className="text-[15px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition text-muted hover:text-danger hover:bg-black/5"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                </p>
+              );
+            })
+          )}
+        </div>
+
+        <div className="relative z-[2] flex items-end justify-between gap-5 pb-[22px] pr-[46px] pl-[110px]">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <svg width="34" height="24" viewBox="0 0 34 24" fill="none" aria-hidden="true">
+                <path
+                  d="M2 15c4-9 9-9 13 0s9 9 13 0"
+                  stroke="#143f3f"
+                  strokeWidth="2.3"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <circle cx="26" cy="7" r="4.2" fill="#f2c230" />
+              </svg>
+              <span className="font-black text-[27px] tracking-tight" style={{ color: "#143f3f" }}>
+                מחר אחר
+              </span>
+            </div>
+            <span className="text-[14px] font-semibold" style={{ color: "#7c8a3a" }}>
+              לבחור להגשים
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5 items-start text-left">
+            <span className="font-bold text-[15px]" style={{ color: "#143f3f" }}>
+              יהודית - פסיכותרפיסטית ומטפלת רגשית
+            </span>
+            <span className="text-[13.5px]" style={{ color: "#1c5a5a", direction: "ltr", unicodeBidi: "isolate" }}>
+              s0548539967@gmail.com • 054-853-9967
+            </span>
+          </div>
+        </div>
+
+        <div
+          className="relative z-[2] text-center text-[13.5px] font-semibold py-3 px-5"
+          style={{ background: "#e9e0cb", color: "#143f3f", letterSpacing: ".2px" }}
+        >
+          EFT ~ NLP ~ תרפיה באומנות ~ דמיון מודרך ~ קלפים טיפוליים ~ קואוצ&apos;ינג ועוד
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background print:bg-white">
+      <style>
+        {pageMode === "card"
+          ? "@page { size: 10.5cm 14.8cm; margin: 0; }"
+          : "@page { size: A4; margin: 12mm; }"}
+      </style>
+
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 print:p-0 print:max-w-none">
         <header className="mb-8 print:hidden">
           <Link
@@ -317,7 +520,7 @@ export default function BlankRecorder() {
                 בלאנק מוקלט
               </h1>
               <p className="text-muted mt-1 text-sm lg:text-base">
-                מקלידים או מקליטים משפט, והוא נוחת על הבלאנק של מחר אחר בצבע כהה משלו
+                מקלידים או מקליטים משפט, והוא נוחת על הבלאנק של מחר אחר בצבע כהה משלו — אפשר גם ללחוץ על משפט כדי לערוך אותו
               </p>
             </div>
           </div>
@@ -375,6 +578,32 @@ export default function BlankRecorder() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            <span className="text-sm text-muted">גודל דף:</span>
+            <div className="inline-flex rounded-lg border border-border bg-white p-0.5">
+              <button
+                type="button"
+                onClick={() => setPageMode("full")}
+                aria-pressed={pageMode === "full"}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                  pageMode === "full" ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground"
+                }`}
+              >
+                בלאנק מלא
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageMode("card")}
+                aria-pressed={pageMode === "card"}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                  pageMode === "card" ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground"
+                }`}
+              >
+                כרטיס למשפט (10.5×14.8 ס״מ)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
             <button
               type="button"
               onClick={undoLast}
@@ -414,149 +643,29 @@ export default function BlankRecorder() {
           </div>
         </div>
 
-        {/* The letterhead sheet */}
-        <div className="flex justify-center print:block">
-          <div
-            ref={sheetRef}
-            className="relative w-full max-w-[700px] flex flex-col overflow-hidden shadow-[0_10px_30px_rgba(20,25,20,0.14)] print:shadow-none print:max-w-none print:min-h-screen"
-            style={{ background: "#fffdf8", minHeight: 990 }}
-          >
-            <div
-              className="absolute top-[22px] right-[26px] z-[3] font-black text-[13px]"
-              style={{ color: "#143f3f" }}
-            >
-              בס&quot;ד
-            </div>
-
-            <div className="absolute inset-y-0 right-auto left-0 w-[74px] overflow-hidden z-[1] pt-[18px]">
-              <div className="grid grid-cols-2 gap-x-[14px] gap-y-[26px]">
-                {railCells.map((cell) => (
-                  <span
-                    key={cell.key}
-                    className={`block text-center text-[19px] leading-none ${cell.offset ? "translate-y-5" : ""}`}
-                    style={{ color: cell.color }}
-                  >
-                    {cell.ch}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative z-[2] flex-1 pt-[78px] pb-[30px] pr-[46px] pl-[110px]">
-              {sentences.length === 0 ? (
-                <p className="italic text-[15px] leading-[1.9]" style={{ color: "#b9b6a8" }} data-export-hide>
-                  כאן ינחתו המשפטים שמקליטים או מקלידים — כל אחד בגוון כהה משלו.
-                </p>
-              ) : (
-                sentences.map((s, i) => {
-                  const color = colorForIndex(i);
-                  const isEditing = editingId === s.id;
-                  return (
-                    <p
-                      key={s.id}
-                      className="group relative text-[15px] leading-[1.7] font-semibold mb-1.5 text-right pl-14"
-                      style={{ color }}
-                    >
-                      {isEditing ? (
-                        <input
-                          ref={editInputRef}
-                          type="text"
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              commitEdit(s.id);
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              cancelEditing();
-                            }
-                          }}
-                          onBlur={() => {
-                            if (cancelledEditRef.current) {
-                              cancelledEditRef.current = false;
-                              return;
-                            }
-                            commitEdit(s.id);
-                          }}
-                          data-export-swap-text
-                          className="w-full bg-transparent border-b border-dashed outline-none text-right font-semibold text-[15px]"
-                          style={{ color, borderColor: color }}
-                        />
-                      ) : (
-                        <span
-                          onClick={() => startEditing(s.id, s.text)}
-                          title="לחיצה לעריכה"
-                          className="cursor-text rounded px-0.5 -mx-0.5 hover:bg-black/5 transition"
-                        >
-                          {s.text}
-                        </span>
-                      )}
-                      {!isEditing && (
-                        <span className="absolute left-0 top-0 flex items-center gap-0.5" data-export-hide>
-                          <button
-                            type="button"
-                            onClick={() => startEditing(s.id, s.text)}
-                            aria-label="עריכת המשפט"
-                            className="p-1 rounded opacity-0 group-hover:opacity-100 transition text-muted hover:text-accent-hover hover:bg-black/5"
-                          >
-                            <Pencil className="size-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeSentence(s.id)}
-                            aria-label="מחיקת המשפט הזה"
-                            className="text-[15px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition text-muted hover:text-danger hover:bg-black/5"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      )}
-                    </p>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="relative z-[2] flex items-end justify-between gap-5 pb-[22px] pr-[46px] pl-[110px]">
-              <div className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <svg width="34" height="24" viewBox="0 0 34 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M2 15c4-9 9-9 13 0s9 9 13 0"
-                      stroke="#143f3f"
-                      strokeWidth="2.3"
-                      strokeLinecap="round"
-                      fill="none"
-                    />
-                    <circle cx="26" cy="7" r="4.2" fill="#f2c230" />
-                  </svg>
-                  <span className="font-black text-[27px] tracking-tight" style={{ color: "#143f3f" }}>
-                    מחר אחר
-                  </span>
-                </div>
-                <span className="text-[14px] font-semibold" style={{ color: "#7c8a3a" }}>
-                  לבחור להגשים
-                </span>
-              </div>
-              <div className="flex flex-col gap-0.5 items-start text-left">
-                <span className="font-bold text-[15px]" style={{ color: "#143f3f" }}>
-                  יהודית - פסיכותרפיסטית ומטפלת רגשית
-                </span>
-                <span className="text-[13.5px]" style={{ color: "#1c5a5a", direction: "ltr", unicodeBidi: "isolate" }}>
-                  s0548539967@gmail.com • 054-853-9967
-                </span>
-              </div>
-            </div>
-
-            <div
-              className="relative z-[2] text-center text-[13.5px] font-semibold py-3 px-5"
-              style={{ background: "#e9e0cb", color: "#143f3f", letterSpacing: ".2px" }}
-            >
-              EFT ~ NLP ~ תרפיה באומנות ~ דמיון מודרך ~ קלפים טיפוליים ~ קואוצ&apos;ינג ועוד
-            </div>
+        {/* The letterhead sheet(s) */}
+        {pageMode === "full" ? (
+          <div className="flex justify-center print:block">
+            {renderFrame(sentences, 0, "full", false)}
           </div>
-        </div>
+        ) : sentences.length === 0 ? (
+          <div className="flex justify-center print:block">
+            {renderFrame([], 0, "card-empty", true)}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-8 print:block print:gap-0">
+            {sentences.map((s, i) => (
+              <div key={s.id} className="flex flex-col items-center print:block print:break-after-page">
+                <span className="text-xs text-muted mb-2 print:hidden">
+                  כרטיס {i + 1} מתוך {sentences.length} · 10.5×14.8 ס״מ בהדפסה
+                </span>
+                <div className="flex justify-center print:block">
+                  {renderFrame([s], i, `card-${s.id}`, true)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
