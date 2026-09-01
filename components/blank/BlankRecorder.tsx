@@ -12,6 +12,8 @@ import {
   ImageDown,
   BookMarked,
   Pencil,
+  Minus,
+  Plus,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +85,11 @@ const RAIL_ROWS = 34;
 type Sentence = { id: number; text: string };
 type PageMode = "full" | "card";
 
+const FONT_SIZE_MIN = 10;
+const FONT_SIZE_MAX = 28;
+const FONT_SIZE_STEP = 1;
+const FONT_SIZE_DEFAULT = 15;
+
 let nextId = 1;
 
 export default function BlankRecorder() {
@@ -97,6 +104,7 @@ export default function BlankRecorder() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [pageMode, setPageMode] = useState<PageMode>("full");
+  const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
 
   const recognizerRef = useRef<SpeechRecognitionLike | null>(null);
   const wantRecordingRef = useRef(false);
@@ -139,6 +147,14 @@ export default function BlankRecorder() {
 
   function clearAll() {
     setSentences([]);
+  }
+
+  function decreaseFontSize() {
+    setFontSize((prev) => Math.max(FONT_SIZE_MIN, prev - FONT_SIZE_STEP));
+  }
+
+  function increaseFontSize() {
+    setFontSize((prev) => Math.min(FONT_SIZE_MAX, prev + FONT_SIZE_STEP));
   }
 
   function startEditing(id: number, currentText: string) {
@@ -265,13 +281,18 @@ export default function BlankRecorder() {
     }
   }
 
-  async function captureFrame(el: HTMLDivElement) {
+  // `stripZoom` clones the ref'd element at its natural (unzoomed) size —
+  // html2canvas does not understand the CSS `zoom` property; capturing a
+  // zoomed card element directly comes back with garbled, doubled-up
+  // content. Card exports capture the natural-size clone instead and are
+  // scaled into the landscape card by `composeCardCanvas` below.
+  async function captureFrame(el: HTMLDivElement, stripZoom: boolean) {
     const { default: html2canvas } = await import("html2canvas");
     return html2canvas(el, {
       backgroundColor: "#fffdf8",
       scale: 2,
       useCORS: true,
-      onclone: (doc) => {
+      onclone: (doc, clonedEl) => {
         doc.querySelectorAll("[data-export-hide]").forEach((node) => node.remove());
         // A sentence mid-edit is an <input>; html2canvas can't paint form
         // control values, so swap it for a plain span with the same text.
@@ -282,8 +303,34 @@ export default function BlankRecorder() {
           span.style.color = inputEl.style.color;
           inputEl.replaceWith(span);
         });
+        if (stripZoom) {
+          clonedEl.style.zoom = "1";
+        }
       },
     });
+  }
+
+  // Scales the naturally-captured (unzoomed) letterhead canvas down to fit
+  // the 14.8 x 10.5cm landscape card, centered on a paper-colored canvas —
+  // done with plain Canvas drawImage math instead of CSS zoom, to sidestep
+  // html2canvas's lack of zoom support.
+  function composeCardCanvas(portrait: HTMLCanvasElement): HTMLCanvasElement {
+    const pxPerCm = 96 / 2.54;
+    const captureScale = 2; // must match the `scale` passed to html2canvas above
+    const outW = Math.round(14.8 * pxPerCm * captureScale);
+    const outH = Math.round(10.5 * pxPerCm * captureScale);
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#fffdf8";
+      ctx.fillRect(0, 0, outW, outH);
+      const fitScale = outH / portrait.height;
+      const drawW = portrait.width * fitScale;
+      ctx.drawImage(portrait, (outW - drawW) / 2, 0, drawW, outH);
+    }
+    return canvas;
   }
 
   function downloadCanvas(canvas: HTMLCanvasElement, filename: string) {
@@ -313,7 +360,7 @@ export default function BlankRecorder() {
       if (pageMode === "full") {
         const el = sheetRefs.current.get("full");
         if (el) {
-          const canvas = await captureFrame(el);
+          const canvas = await captureFrame(el, false);
           await downloadCanvas(canvas, "בלאנק-מחר-אחר.png");
         }
       } else {
@@ -321,7 +368,8 @@ export default function BlankRecorder() {
         for (let i = 0; i < keys.length; i++) {
           const el = sheetRefs.current.get(keys[i]);
           if (!el) continue;
-          const canvas = await captureFrame(el);
+          const portrait = await captureFrame(el, true);
+          const canvas = composeCardCanvas(portrait);
           const suffix = keys.length > 1 ? `-${i + 1}` : "";
           await downloadCanvas(canvas, `בלאנק-מחר-אחר${suffix}.png`);
           if (i < keys.length - 1) await new Promise((r) => setTimeout(r, 250));
@@ -339,23 +387,8 @@ export default function BlankRecorder() {
   // full letterhead.
   // ---------------------------------------------------------------------
   function renderFrame(frameSentences: Sentence[], colorStart: number, refKey: string, isCard: boolean) {
-    // The letterhead is designed at a natural 700x990px box. A single-sentence
-    // card prints at 10.5 x 14.8cm (close to A6) — 990px is ~26.19cm at the
-    // CSS reference 96dpi, so zoom 0.56 shrinks the design to fit inside it
-    // (a hair under the exact 0.565 ratio, as a rounding safety margin — this
-    // must fit within the page height, or the whole last block, the tags
-    // bar, gets pushed onto a second physical page). This must be `zoom`,
-    // not `transform: scale` — a transform only repaints the box visually
-    // and does not affect print pagination, so the content would still be
-    // measured at its full 700x990px size and split across pages.
-    return (
-      <div
-        ref={sheetRefCallback(refKey)}
-        className={`relative w-full max-w-[700px] flex flex-col overflow-hidden shadow-[0_10px_30px_rgba(20,25,20,0.14)] print:shadow-none ${
-          isCard ? "print:w-[700px] print:[zoom:0.56]" : "print:max-w-none print:min-h-screen"
-        }`}
-        style={{ background: "#fffdf8", minHeight: 990 }}
-      >
+    const content = (
+      <>
         <div
           className="absolute top-[22px] right-[26px] z-[3] font-black text-[13px]"
           style={{ color: "#143f3f" }}
@@ -389,8 +422,8 @@ export default function BlankRecorder() {
               return (
                 <p
                   key={s.id}
-                  className="group relative text-[15px] leading-[2] font-semibold mb-5 text-right pl-14"
-                  style={{ color }}
+                  className="group relative leading-[2] font-semibold mb-5 text-right pl-14"
+                  style={{ color, fontSize }}
                 >
                   {isEditing ? (
                     <input
@@ -415,8 +448,8 @@ export default function BlankRecorder() {
                         commitEdit(s.id);
                       }}
                       data-export-swap-text
-                      className="w-full bg-transparent border-b border-dashed outline-none text-right font-semibold text-[15px]"
-                      style={{ color, borderColor: color }}
+                      className="w-full bg-transparent border-b border-dashed outline-none text-right font-semibold"
+                      style={{ color, borderColor: color, fontSize }}
                     />
                   ) : (
                     <span
@@ -490,6 +523,46 @@ export default function BlankRecorder() {
         >
           EFT ~ NLP ~ תרפיה באומנות ~ דמיון מודרך ~ קלפים טיפוליים ~ קואוצ&apos;ינג ועוד
         </div>
+      </>
+    );
+
+    if (!isCard) {
+      return (
+        <div
+          ref={sheetRefCallback(refKey)}
+          className="relative w-full max-w-[700px] flex flex-col overflow-hidden shadow-[0_10px_30px_rgba(20,25,20,0.14)] print:shadow-none print:max-w-none print:min-h-screen"
+          style={{ background: "#fffdf8", minHeight: 990 }}
+        >
+          {content}
+        </div>
+      );
+    }
+
+    // A single-sentence card prints landscape at 14.8 x 10.5cm (close to a
+    // sideways A6). The letterhead itself is designed portrait, at a natural
+    // 700x990px, so it's shrunk with `zoom` (not `transform: scale`, which
+    // only repaints the box visually and does not affect print pagination —
+    // the content would still measure its full untransformed size and split
+    // across pages) to fit the 10.5cm height, then centered in the wider
+    // frame. 990px is ~26.19cm at the CSS reference 96dpi, so zoom 0.4 fits
+    // it with a small safety margin under the exact 0.401 ratio. The ref
+    // goes on this inner, unzoomed-in-natural-terms node (not the outer
+    // frame) — html2canvas doesn't understand `zoom` and garbles a capture
+    // of a zoomed element, so "save as image" captures this node with the
+    // clone's zoom stripped back to natural size, then composes the
+    // landscape card itself; see composeCardCanvas.
+    return (
+      <div
+        className="relative overflow-hidden flex items-center justify-center shadow-[0_10px_30px_rgba(20,25,20,0.14)] print:shadow-none"
+        style={{ width: "14.8cm", height: "10.5cm", background: "#fffdf8" }}
+      >
+        <div
+          ref={sheetRefCallback(refKey)}
+          className="relative flex flex-col overflow-hidden"
+          style={{ width: 700, minHeight: 990, background: "#fffdf8", zoom: 0.4 }}
+        >
+          {content}
+        </div>
       </div>
     );
   }
@@ -498,7 +571,7 @@ export default function BlankRecorder() {
     <div className="min-h-screen bg-background print:bg-white">
       <style>
         {pageMode === "card"
-          ? "@page { size: 10.5cm 14.8cm; margin: 0; }"
+          ? "@page { size: 14.8cm 10.5cm; margin: 0; }"
           : "@page { size: A4; margin: 12mm; }"}
       </style>
 
@@ -598,7 +671,32 @@ export default function BlankRecorder() {
                   pageMode === "card" ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground"
                 }`}
               >
-                כרטיס למשפט (10.5×14.8 ס״מ)
+                כרטיס למשפט (14.8×10.5 ס״מ, לרוחב)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            <span className="text-sm text-muted">גודל גופן:</span>
+            <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-white p-0.5">
+              <button
+                type="button"
+                onClick={decreaseFontSize}
+                disabled={fontSize <= FONT_SIZE_MIN}
+                aria-label="הקטנת גופן"
+                className="inline-flex items-center justify-center size-7 rounded-md text-muted hover:text-foreground hover:bg-accent-soft/60 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Minus className="size-4" />
+              </button>
+              <span className="w-9 text-center text-sm text-foreground tabular-nums">{fontSize}</span>
+              <button
+                type="button"
+                onClick={increaseFontSize}
+                disabled={fontSize >= FONT_SIZE_MAX}
+                aria-label="הגדלת גופן"
+                className="inline-flex items-center justify-center size-7 rounded-md text-muted hover:text-foreground hover:bg-accent-soft/60 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Plus className="size-4" />
               </button>
             </div>
           </div>
@@ -657,7 +755,7 @@ export default function BlankRecorder() {
             {sentences.map((s, i) => (
               <div key={s.id} className="flex flex-col items-center print:block print:break-after-page">
                 <span className="text-xs text-muted mb-2 print:hidden">
-                  כרטיס {i + 1} מתוך {sentences.length} · 10.5×14.8 ס״מ בהדפסה
+                  כרטיס {i + 1} מתוך {sentences.length} · 14.8×10.5 ס״מ בהדפסה
                 </span>
                 <div className="flex justify-center print:block">
                   {renderFrame([s], i, `card-${s.id}`, true)}
