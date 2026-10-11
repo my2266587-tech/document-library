@@ -15,6 +15,8 @@ import {
   Minus,
   Plus,
 } from "lucide-react";
+import { uploadFileWithProgress } from "@/lib/upload-client";
+import { parseApiResponse } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Minimal ambient typing for the Web Speech API (not in lib.dom.d.ts).
@@ -90,6 +92,9 @@ const FONT_SIZE_MAX = 28;
 const FONT_SIZE_STEP = 1;
 const FONT_SIZE_DEFAULT = 15;
 
+// Every saved בלאנק lands in the library under this category right away.
+const LIBRARY_CATEGORY_NAME = "משפטי חיזוק";
+
 let nextId = 1;
 
 export default function BlankRecorder() {
@@ -101,6 +106,7 @@ export default function BlankRecorder() {
   const [micWarn, setMicWarn] = useState(false);
   const [livePreview, setLivePreview] = useState("");
   const [savingImage, setSavingImage] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<{ text: string; warn: boolean } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [pageMode, setPageMode] = useState<PageMode>("full");
@@ -333,35 +339,72 @@ export default function BlankRecorder() {
     return canvas;
   }
 
-  function downloadCanvas(canvas: HTMLCanvasElement, filename: string) {
-    return new Promise<void>((resolve) => {
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          resolve();
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        resolve();
-      }, "image/png");
+  function canvasToBlob(canvas: HTMLCanvasElement) {
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function findLibraryCategoryId(): Promise<string> {
+    const res = await fetch("/api/document-categories", { cache: "no-store" });
+    const data = await parseApiResponse<{ categories: { id: string; name: string }[] }>(res);
+    const cat = data.categories.find((c) => c.name.trim() === LIBRARY_CATEGORY_NAME);
+    if (!cat) throw new Error(`הקטגוריה "${LIBRARY_CATEGORY_NAME}" לא נמצאה בספרייה`);
+    return cat.id;
+  }
+
+  // Same direct-to-storage flow as the library's upload modal: signed URL,
+  // PUT, then record the row — here always under משפטי חיזוק.
+  async function saveToLibrary(blob: Blob, filename: string, title: string, categoryId: string) {
+    const file = new File([blob], filename, { type: "image/png" });
+    const signRes = await fetch("/api/documents/signed-upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, fileSize: file.size }),
     });
+    const { path, signedUrl } = await parseApiResponse<{ path: string; signedUrl: string }>(signRes);
+    await uploadFileWithProgress(signedUrl, file);
+    const recordRes = await fetch("/api/documents/record", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path,
+        original_file_name: file.name,
+        file_size: file.size,
+        file_type: "png",
+        title,
+        category_id: categoryId,
+      }),
+    });
+    await parseApiResponse(recordRes);
   }
 
   async function saveAsImage() {
     if (savingImage) return;
     setSavingImage(true);
+    setSaveStatus(null);
     try {
+      const outputs: { blob: Blob; filename: string; title: string }[] = [];
       if (pageMode === "full") {
         const el = sheetRefs.current.get("full");
         if (el) {
-          const canvas = await captureFrame(el, false);
-          await downloadCanvas(canvas, "בלאנק-מחר-אחר.png");
+          const blob = await canvasToBlob(await captureFrame(el, false));
+          if (blob) {
+            outputs.push({
+              blob,
+              filename: "בלאנק-מחר-אחר.png",
+              title: sentences[0]?.text ?? "בלאנק מחר אחר",
+            });
+          }
         }
       } else {
         const keys = sentences.length > 0 ? sentences.map((s) => `card-${s.id}`) : ["card-empty"];
@@ -369,11 +412,42 @@ export default function BlankRecorder() {
           const el = sheetRefs.current.get(keys[i]);
           if (!el) continue;
           const portrait = await captureFrame(el, true);
-          const canvas = composeCardCanvas(portrait);
+          const blob = await canvasToBlob(composeCardCanvas(portrait));
+          if (!blob) continue;
           const suffix = keys.length > 1 ? `-${i + 1}` : "";
-          await downloadCanvas(canvas, `בלאנק-מחר-אחר${suffix}.png`);
-          if (i < keys.length - 1) await new Promise((r) => setTimeout(r, 250));
+          outputs.push({
+            blob,
+            filename: `בלאנק-מחר-אחר${suffix}.png`,
+            title: sentences[i]?.text ?? "בלאנק מחר אחר",
+          });
         }
+      }
+
+      for (let i = 0; i < outputs.length; i++) {
+        downloadBlob(outputs[i].blob, outputs[i].filename);
+        if (i < outputs.length - 1) await new Promise((r) => setTimeout(r, 250));
+      }
+
+      if (outputs.length === 0) return;
+      try {
+        const categoryId = await findLibraryCategoryId();
+        for (const out of outputs) {
+          await saveToLibrary(out.blob, out.filename, out.title, categoryId);
+        }
+        setSaveStatus({
+          text:
+            outputs.length > 1
+              ? `${outputs.length} התמונות נשמרו בספרייה בקטגוריית ${LIBRARY_CATEGORY_NAME}`
+              : `התמונה נשמרה בספרייה בקטגוריית ${LIBRARY_CATEGORY_NAME}`,
+          warn: false,
+        });
+      } catch (err) {
+        setSaveStatus({
+          text: `התמונה הורדה, אבל השמירה בספרייה נכשלה: ${
+            err instanceof Error ? err.message : "שגיאה לא ידועה"
+          }`,
+          warn: true,
+        });
       }
     } finally {
       setSavingImage(false);
@@ -736,9 +810,14 @@ export default function BlankRecorder() {
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ImageDown className="size-4" />
-              {savingImage ? "מכין תמונה…" : "שמירה כתמונה"}
+              {savingImage ? "שומר…" : "שמירה כתמונה"}
             </button>
           </div>
+          {saveStatus && (
+            <div className={`text-sm ${saveStatus.warn ? "text-danger" : "text-accent-hover"}`}>
+              {saveStatus.text}
+            </div>
+          )}
         </div>
 
         {/* The letterhead sheet(s) */}
