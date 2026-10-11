@@ -15,9 +15,11 @@ import {
   Pencil,
   Minus,
   Plus,
+  ImageUp,
 } from "lucide-react";
 import { uploadFileWithProgress } from "@/lib/upload-client";
 import { parseApiResponse } from "@/lib/utils";
+import { embedBlankData, readBlankData, recognizeBlankImage, type BlankData } from "@/lib/blank-image";
 
 // ---------------------------------------------------------------------------
 // Minimal ambient typing for the Web Speech API (not in lib.dom.d.ts).
@@ -106,8 +108,8 @@ export default function BlankRecorder() {
   const [micStatus, setMicStatus] = useState("בודק תמיכה בהקלטה בדפדפן…");
   const [micWarn, setMicWarn] = useState(false);
   const [livePreview, setLivePreview] = useState("");
-  const [busy, setBusy] = useState<"save" | "download" | null>(null);
-  const [saveStatus, setSaveStatus] = useState<{ text: string; warn: boolean } | null>(null);
+  const [busy, setBusy] = useState<"save" | "download" | "open" | null>(null);
+  const [status, setStatus] = useState<{ text: string; warn: boolean } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [pageMode, setPageMode] = useState<PageMode>("full");
@@ -119,6 +121,7 @@ export default function BlankRecorder() {
   const sheetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const editInputRef = useRef<HTMLInputElement | null>(null);
   const cancelledEditRef = useRef(false);
+  const openImageInputRef = useRef<HTMLInputElement | null>(null);
 
   function sheetRefCallback(key: string) {
     return (el: HTMLDivElement | null) => {
@@ -389,15 +392,21 @@ export default function BlankRecorder() {
     await parseApiResponse(recordRes);
   }
 
+  // Written into every exported PNG so "open image for editing" can restore
+  // the exact text later.
+  function blankData(texts: string[]): BlankData {
+    return { v: 1, mode: pageMode, fontSize, sentences: texts };
+  }
+
   async function renderImages() {
     const outputs: { blob: Blob; filename: string; title: string }[] = [];
     if (pageMode === "full") {
       const el = sheetRefs.current.get("full");
       if (el) {
-        const blob = await canvasToBlob(await captureFrame(el, false));
-        if (blob) {
+        const png = await canvasToBlob(await captureFrame(el, false));
+        if (png) {
           outputs.push({
-            blob,
+            blob: await embedBlankData(png, blankData(sentences.map((s) => s.text))),
             filename: "בלאנק-מחר-אחר.png",
             title: sentences[0]?.text ?? "בלאנק מחר אחר",
           });
@@ -409,11 +418,11 @@ export default function BlankRecorder() {
         const el = sheetRefs.current.get(keys[i]);
         if (!el) continue;
         const portrait = await captureFrame(el, true);
-        const blob = await canvasToBlob(composeCardCanvas(portrait));
-        if (!blob) continue;
+        const png = await canvasToBlob(composeCardCanvas(portrait));
+        if (!png) continue;
         const suffix = keys.length > 1 ? `-${i + 1}` : "";
         outputs.push({
-          blob,
+          blob: await embedBlankData(png, blankData(sentences[i] ? [sentences[i].text] : [])),
           filename: `בלאנק-מחר-אחר${suffix}.png`,
           title: sentences[i]?.text ?? "בלאנק מחר אחר",
         });
@@ -425,7 +434,7 @@ export default function BlankRecorder() {
   async function saveImagesToLibrary() {
     if (busy) return;
     setBusy("save");
-    setSaveStatus(null);
+    setStatus(null);
     try {
       const outputs = await renderImages();
       if (outputs.length === 0) return;
@@ -433,7 +442,7 @@ export default function BlankRecorder() {
       for (const out of outputs) {
         await saveToLibrary(out.blob, out.filename, out.title, categoryId);
       }
-      setSaveStatus({
+      setStatus({
         text:
           outputs.length > 1
             ? `${outputs.length} התמונות נשמרו בספרייה בקטגוריית ${LIBRARY_CATEGORY_NAME}`
@@ -441,7 +450,7 @@ export default function BlankRecorder() {
         warn: false,
       });
     } catch (err) {
-      setSaveStatus({
+      setStatus({
         text: `השמירה בספרייה נכשלה: ${err instanceof Error ? err.message : "שגיאה לא ידועה"}`,
         warn: true,
       });
@@ -459,6 +468,67 @@ export default function BlankRecorder() {
         downloadBlob(outputs[i].blob, outputs[i].filename);
         if (i < outputs.length - 1) await new Promise((r) => setTimeout(r, 250));
       }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Loads previously exported בלאנק images back into the editor. Images
+  // carrying the embedded data restore exactly; older ones go through
+  // Hebrew OCR, and the recognized sentences are then fixed by hand.
+  async function openImagesForEditing(files: File[]) {
+    if (busy || files.length === 0) return;
+    if (sentences.length > 0 && !confirm("לפתוח את התמונה במקום המשפטים שכבר על הבלאנק?")) {
+      return;
+    }
+    setBusy("open");
+    setStatus(null);
+    try {
+      const texts: string[] = [];
+      let mode: PageMode | null = null;
+      let size: number | null = null;
+      let usedOcr = false;
+      for (let i = 0; i < files.length; i++) {
+        const embedded = await readBlankData(files[i]);
+        if (embedded) {
+          texts.push(...embedded.sentences);
+          mode ??= embedded.mode;
+          size ??= embedded.fontSize;
+          continue;
+        }
+        usedOcr = true;
+        const prefix = files.length > 1 ? `תמונה ${i + 1} מתוך ${files.length}: ` : "";
+        setStatus({ text: `${prefix}מזהה את הטקסט בתמונה…`, warn: false });
+        const ocr = await recognizeBlankImage(files[i], (p) =>
+          setStatus({ text: `${prefix}מזהה את הטקסט בתמונה… ${Math.round(p * 100)}%`, warn: false })
+        );
+        texts.push(...ocr.sentences);
+        mode ??= ocr.mode;
+        size ??= ocr.fontSize;
+      }
+
+      const loaded = texts.map((t) => t.trim()).filter(Boolean);
+      setEditingId(null);
+      setSentences(loaded.map((text) => ({ id: nextId++, text })));
+      if (mode) setPageMode(mode);
+      if (size !== null && Number.isFinite(size)) {
+        setFontSize(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, size)));
+      }
+      if (loaded.length === 0) {
+        setStatus({ text: "לא נמצא טקסט בתמונה — אפשר להקליד את המשפטים מחדש.", warn: true });
+      } else if (usedOcr) {
+        setStatus({
+          text: "הטקסט זוהה אוטומטית מהתמונה — כדאי לעבור על המשפטים ולתקן בלחיצה על משפט.",
+          warn: false,
+        });
+      } else {
+        setStatus({ text: "הבלאנק נפתח לעריכה — לחיצה על משפט עורכת אותו.", warn: false });
+      }
+    } catch (err) {
+      setStatus({
+        text: `פתיחת התמונה נכשלה: ${err instanceof Error ? err.message : "שגיאה לא ידועה"}`,
+        warn: true,
+      });
     } finally {
       setBusy(null);
     }
@@ -677,7 +747,7 @@ export default function BlankRecorder() {
                 בלאנק מוקלט
               </h1>
               <p className="text-muted mt-1 text-sm lg:text-base">
-                מקלידים או מקליטים משפט, והוא נוחת על הבלאנק של מחר אחר בצבע כהה משלו — אפשר גם ללחוץ על משפט כדי לערוך אותו
+                מקלידים או מקליטים משפט, והוא נוחת על הבלאנק של מחר אחר בצבע כהה משלו — אפשר גם ללחוץ על משפט כדי לערוך אותו, או לפתוח תמונה שהורדה בעבר ולערוך אותה
               </p>
             </div>
           </div>
@@ -805,6 +875,27 @@ export default function BlankRecorder() {
               ניקוי הכל
             </button>
             <div className="flex-1" />
+            <input
+              ref={openImageInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                openImagesForEditing(files);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => openImageInputRef.current?.click()}
+              disabled={busy !== null}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ImageUp className="size-4" />
+              {busy === "open" ? "פותח תמונה…" : "פתיחת תמונה לעריכה"}
+            </button>
             <button
               type="button"
               onClick={() => window.print()}
@@ -832,9 +923,9 @@ export default function BlankRecorder() {
               {busy === "save" ? "שומר…" : "שמירה בספרייה"}
             </button>
           </div>
-          {saveStatus && (
-            <div className={`text-sm ${saveStatus.warn ? "text-danger" : "text-accent-hover"}`}>
-              {saveStatus.text}
+          {status && (
+            <div className={`text-sm ${status.warn ? "text-danger" : "text-accent-hover"}`}>
+              {status.text}
             </div>
           )}
         </div>
