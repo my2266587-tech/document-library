@@ -10,6 +10,7 @@ import {
   Trash2,
   Printer,
   ImageDown,
+  Save,
   BookMarked,
   Pencil,
   Minus,
@@ -105,7 +106,7 @@ export default function BlankRecorder() {
   const [micStatus, setMicStatus] = useState("בודק תמיכה בהקלטה בדפדפן…");
   const [micWarn, setMicWarn] = useState(false);
   const [livePreview, setLivePreview] = useState("");
-  const [savingImage, setSavingImage] = useState(false);
+  const [busy, setBusy] = useState<"save" | "download" | null>(null);
   const [saveStatus, setSaveStatus] = useState<{ text: string; warn: boolean } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -388,69 +389,78 @@ export default function BlankRecorder() {
     await parseApiResponse(recordRes);
   }
 
-  async function saveAsImage() {
-    if (savingImage) return;
-    setSavingImage(true);
-    setSaveStatus(null);
-    try {
-      const outputs: { blob: Blob; filename: string; title: string }[] = [];
-      if (pageMode === "full") {
-        const el = sheetRefs.current.get("full");
-        if (el) {
-          const blob = await canvasToBlob(await captureFrame(el, false));
-          if (blob) {
-            outputs.push({
-              blob,
-              filename: "בלאנק-מחר-אחר.png",
-              title: sentences[0]?.text ?? "בלאנק מחר אחר",
-            });
-          }
-        }
-      } else {
-        const keys = sentences.length > 0 ? sentences.map((s) => `card-${s.id}`) : ["card-empty"];
-        for (let i = 0; i < keys.length; i++) {
-          const el = sheetRefs.current.get(keys[i]);
-          if (!el) continue;
-          const portrait = await captureFrame(el, true);
-          const blob = await canvasToBlob(composeCardCanvas(portrait));
-          if (!blob) continue;
-          const suffix = keys.length > 1 ? `-${i + 1}` : "";
+  async function renderImages() {
+    const outputs: { blob: Blob; filename: string; title: string }[] = [];
+    if (pageMode === "full") {
+      const el = sheetRefs.current.get("full");
+      if (el) {
+        const blob = await canvasToBlob(await captureFrame(el, false));
+        if (blob) {
           outputs.push({
             blob,
-            filename: `בלאנק-מחר-אחר${suffix}.png`,
-            title: sentences[i]?.text ?? "בלאנק מחר אחר",
+            filename: "בלאנק-מחר-אחר.png",
+            title: sentences[0]?.text ?? "בלאנק מחר אחר",
           });
         }
       }
+    } else {
+      const keys = sentences.length > 0 ? sentences.map((s) => `card-${s.id}`) : ["card-empty"];
+      for (let i = 0; i < keys.length; i++) {
+        const el = sheetRefs.current.get(keys[i]);
+        if (!el) continue;
+        const portrait = await captureFrame(el, true);
+        const blob = await canvasToBlob(composeCardCanvas(portrait));
+        if (!blob) continue;
+        const suffix = keys.length > 1 ? `-${i + 1}` : "";
+        outputs.push({
+          blob,
+          filename: `בלאנק-מחר-אחר${suffix}.png`,
+          title: sentences[i]?.text ?? "בלאנק מחר אחר",
+        });
+      }
+    }
+    return outputs;
+  }
 
+  async function saveImagesToLibrary() {
+    if (busy) return;
+    setBusy("save");
+    setSaveStatus(null);
+    try {
+      const outputs = await renderImages();
+      if (outputs.length === 0) return;
+      const categoryId = await findLibraryCategoryId();
+      for (const out of outputs) {
+        await saveToLibrary(out.blob, out.filename, out.title, categoryId);
+      }
+      setSaveStatus({
+        text:
+          outputs.length > 1
+            ? `${outputs.length} התמונות נשמרו בספרייה בקטגוריית ${LIBRARY_CATEGORY_NAME}`
+            : `התמונה נשמרה בספרייה בקטגוריית ${LIBRARY_CATEGORY_NAME}`,
+        warn: false,
+      });
+    } catch (err) {
+      setSaveStatus({
+        text: `השמירה בספרייה נכשלה: ${err instanceof Error ? err.message : "שגיאה לא ידועה"}`,
+        warn: true,
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function downloadImages() {
+    if (busy) return;
+    setBusy("download");
+    try {
+      const outputs = await renderImages();
       for (let i = 0; i < outputs.length; i++) {
         downloadBlob(outputs[i].blob, outputs[i].filename);
         if (i < outputs.length - 1) await new Promise((r) => setTimeout(r, 250));
       }
-
-      if (outputs.length === 0) return;
-      try {
-        const categoryId = await findLibraryCategoryId();
-        for (const out of outputs) {
-          await saveToLibrary(out.blob, out.filename, out.title, categoryId);
-        }
-        setSaveStatus({
-          text:
-            outputs.length > 1
-              ? `${outputs.length} התמונות נשמרו בספרייה בקטגוריית ${LIBRARY_CATEGORY_NAME}`
-              : `התמונה נשמרה בספרייה בקטגוריית ${LIBRARY_CATEGORY_NAME}`,
-          warn: false,
-        });
-      } catch (err) {
-        setSaveStatus({
-          text: `התמונה הורדה, אבל השמירה בספרייה נכשלה: ${
-            err instanceof Error ? err.message : "שגיאה לא ידועה"
-          }`,
-          warn: true,
-        });
-      }
     } finally {
-      setSavingImage(false);
+      setBusy(null);
     }
   }
 
@@ -805,12 +815,21 @@ export default function BlankRecorder() {
             </button>
             <button
               type="button"
-              onClick={saveAsImage}
-              disabled={savingImage}
+              onClick={downloadImages}
+              disabled={busy !== null}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ImageDown className="size-4" />
-              {savingImage ? "שומר…" : "שמירה כתמונה"}
+              {busy === "download" ? "מכין תמונה…" : "הורדה כתמונה"}
+            </button>
+            <button
+              type="button"
+              onClick={saveImagesToLibrary}
+              disabled={busy !== null}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white bg-accent hover:bg-accent-hover shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="size-4" />
+              {busy === "save" ? "שומר…" : "שמירה בספרייה"}
             </button>
           </div>
           {saveStatus && (
