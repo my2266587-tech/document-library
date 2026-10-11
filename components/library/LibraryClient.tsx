@@ -186,23 +186,6 @@ function LibraryInner() {
     }
   }
 
-  async function handleDeleteCategory(cat: DocumentCategory) {
-    if (!confirm(`בטוחה למחוק את הקטגוריה "${cat.name}"?`)) return;
-    try {
-      const res = await fetch(`/api/document-categories/${cat.id}`, {
-        method: "DELETE",
-      });
-      await parseApiResponse(res);
-      toast.show("success", `הקטגוריה "${cat.name}" נמחקה`);
-      if (selectedCat === cat.id) setSelectedCat("all");
-      fetchCategories();
-      fetchDocs();
-    } catch (err) {
-      console.error("[handleDeleteCategory] error", err);
-      toast.show("error", err instanceof Error ? err.message : "שגיאה במחיקה");
-    }
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10">
@@ -269,7 +252,6 @@ function LibraryInner() {
             categories={categories}
             selected={selectedCat}
             onSelect={setSelectedCat}
-            onDelete={handleDeleteCategory}
           />
         </div>
 
