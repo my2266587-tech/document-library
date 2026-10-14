@@ -1,14 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Modal from "./Modal";
-import { Upload } from "lucide-react";
+import { Upload, AlertTriangle, Loader2 } from "lucide-react";
 import type { DocumentCategory } from "@/lib/types";
 import { useToast } from "./Toast";
 import { parseApiResponse, extOf, formatBytes } from "@/lib/utils";
 import { uploadFileWithProgress } from "@/lib/upload-client";
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from "@/lib/constants";
 import { FileTypeIcon } from "@/lib/file-icons";
+import { checkDuplicates, type DuplicateMatch } from "@/lib/duplicates";
+import DuplicateMatches from "./DuplicateMatches";
+
+type DupState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "found"; matches: DuplicateMatch[]; confirmed: boolean }
+  | { kind: "error" };
 
 type Props = {
   open: boolean;
@@ -31,7 +39,43 @@ export default function UploadModal({
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  const [dup, setDup] = useState<DupState>({ kind: "idle" });
+  const [inputKey, setInputKey] = useState(0);
+  const checkSeq = useRef(0);
   const toast = useToast();
+
+  const needsDupChoice = dup.kind === "found" && !dup.confirmed;
+
+  async function onPickFile(picked: File | null) {
+    setFile(picked);
+    const seq = ++checkSeq.current;
+    if (!picked) {
+      setDup({ kind: "idle" });
+      return;
+    }
+    setDup({ kind: "checking" });
+    try {
+      const [matches] = await checkDuplicates([picked]);
+      if (seq !== checkSeq.current) return;
+      setDup(
+        matches.length
+          ? { kind: "found", matches, confirmed: false }
+          : { kind: "idle" }
+      );
+    } catch (err) {
+      if (seq !== checkSeq.current) return;
+      console.error("[UploadModal] duplicate check failed", err);
+      setDup({ kind: "error" });
+    }
+  }
+
+  function skipDuplicate() {
+    checkSeq.current++;
+    setFile(null);
+    setDup({ kind: "idle" });
+    setInputKey((k) => k + 1);
+    toast.show("info", "המסמך לא הועלה — הוא כבר קיים במערכת");
+  }
 
   function reset() {
     setFile(null);
@@ -39,12 +83,23 @@ export default function UploadModal({
     setNotes("");
     setCategoryId(defaultCategoryId ?? "");
     setProgress(null);
+    checkSeq.current++;
+    setDup({ kind: "idle" });
+    setInputKey((k) => k + 1);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) {
       toast.show("error", "יש לבחור קובץ");
+      return;
+    }
+    if (dup.kind === "checking") {
+      toast.show("info", "בודק אם המסמך כבר קיים — רגע אחד");
+      return;
+    }
+    if (needsDupChoice) {
+      toast.show("error", "המסמך כבר קיים במערכת — יש לבחור אם להעלות שוב");
       return;
     }
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -116,8 +171,9 @@ export default function UploadModal({
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="קובץ" required>
           <input
+            key={inputKey}
             type="file"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
             className="block w-full text-sm file:me-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-accent file:text-white file:font-medium hover:file:bg-accent-hover cursor-pointer"
             required
             disabled={busy}
@@ -137,6 +193,63 @@ export default function UploadModal({
               </p>
               <p className="text-xs text-muted">{formatBytes(file.size)}</p>
             </div>
+          </div>
+        )}
+
+        {/* Duplicate check */}
+        {dup.kind === "checking" && (
+          <p className="flex items-center gap-1.5 text-xs text-muted">
+            <Loader2 className="size-3.5 animate-spin" />
+            בודק אם המסמך כבר קיים במערכת…
+          </p>
+        )}
+        {dup.kind === "error" && (
+          <p className="text-xs text-muted">
+            לא ניתן היה לבדוק אם המסמך כבר קיים. אפשר להעלות בכל זאת.
+          </p>
+        )}
+        {dup.kind === "found" && (
+          <div
+            role="alert"
+            className="space-y-2.5 p-3 rounded-xl bg-accent-soft border border-border-strong"
+          >
+            <p className="flex items-start gap-2 text-sm font-medium text-foreground">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5 text-accent" />
+              {dup.matches.length === 1
+                ? "נראה שהמסמך הזה כבר קיים במערכת:"
+                : `נמצאו ${dup.matches.length} מסמכים דומים במערכת:`}
+            </p>
+            <DuplicateMatches matches={dup.matches} />
+            {dup.confirmed ? (
+              <p className="text-xs text-muted">
+                המסמך יועלה שוב כעותק נוסף.{" "}
+                <button
+                  type="button"
+                  onClick={skipDuplicate}
+                  className="underline hover:text-foreground"
+                  disabled={busy}
+                >
+                  ביטול — לא להעלות
+                </button>
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={skipDuplicate}
+                  className="min-h-11 px-3 py-2 rounded-lg border border-border bg-surface text-sm text-foreground hover:bg-background transition"
+                >
+                  לא להעלות
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDup({ ...dup, confirmed: true })}
+                  className="min-h-11 px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition"
+                >
+                  להעלות שוב בכל זאת
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -204,7 +317,7 @@ export default function UploadModal({
           </button>
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || needsDupChoice || dup.kind === "checking"}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition disabled:opacity-60"
           >
             <Upload className="size-4" />
