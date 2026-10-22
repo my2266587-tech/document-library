@@ -14,6 +14,8 @@ import {
   X,
   Filter,
   Mic,
+  ScanText,
+  Type,
 } from "lucide-react";
 import type { DocumentCategory, DocumentWithCategory } from "@/lib/types";
 import CategoryTabs from "./CategoryTabs";
@@ -23,6 +25,7 @@ import UploadModal from "./UploadModal";
 import UploadManyModal from "./UploadManyModal";
 import ManageCategoriesModal from "./ManageCategoriesModal";
 import EditDocumentModal from "./EditDocumentModal";
+import ContentSearchPanel from "./ContentSearchPanel";
 import { ToastProvider, useToast } from "./Toast";
 import { parseApiResponse, formatBytes } from "@/lib/utils";
 import { colorForName } from "@/lib/category-color";
@@ -37,6 +40,8 @@ export default function LibraryClient() {
 
 type SortKey = "created_desc" | "created_asc" | "title_asc" | "title_desc";
 type ViewMode = "grid" | "list";
+// "title" filters the document list by name; "content" finds sentences inside documents.
+type SearchMode = "title" | "content";
 
 const VIEW_STORAGE_KEY = "library:view-mode";
 
@@ -45,6 +50,7 @@ function LibraryInner() {
   const [docs, setDocs] = useState<DocumentWithCategory[]>([]);
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [searchMode, setSearchMode] = useState<SearchMode>("title");
   const [fileType, setFileType] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("created_desc");
   const [loading, setLoading] = useState(true);
@@ -91,7 +97,7 @@ function LibraryInner() {
     setLoading(true);
     const params = new URLSearchParams();
     if (selectedCat !== "all") params.set("category_id", selectedCat);
-    if (search.trim()) params.set("q", search.trim());
+    if (searchMode === "title" && search.trim()) params.set("q", search.trim());
     if (fileType !== "all") params.set("file_type", fileType);
     params.set("sort", sort);
 
@@ -109,7 +115,7 @@ function LibraryInner() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCat, search, fileType, sort, toast]);
+  }, [selectedCat, search, searchMode, fileType, sort, toast]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -133,7 +139,9 @@ function LibraryInner() {
   );
 
   const hasActiveFilters =
-    search.trim() !== "" || fileType !== "all" || selectedCat !== "all";
+    (searchMode === "title" && search.trim() !== "") ||
+    fileType !== "all" ||
+    selectedCat !== "all";
 
   function resetFilters() {
     setSearch("");
@@ -269,58 +277,85 @@ function LibraryInner() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="חיפוש לפי שם מסמך…"
+              placeholder={
+                searchMode === "content"
+                  ? "חיפוש משפט בתוך המסמכים…"
+                  : "חיפוש לפי שם מסמך…"
+              }
               className="w-full rounded-lg border border-border bg-white pe-9 ps-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
             />
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={fileType}
-              onChange={(e) => setFileType(e.target.value)}
-              className="rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-              aria-label="סינון לפי סוג קובץ"
+            <div
+              className="inline-flex rounded-lg border border-border bg-white p-0.5"
+              role="group"
+              aria-label="סוג חיפוש"
             >
-              <option value="all">כל סוגי הקבצים</option>
-              {fileTypes.map((t) => (
-                <option key={t} value={t}>
-                  {t.toUpperCase()}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              className="rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-              aria-label="מיון"
-            >
-              <option value="created_desc">חדש לישן</option>
-              <option value="created_asc">ישן לחדש</option>
-              <option value="title_asc">שם א—ת</option>
-              <option value="title_desc">שם ת—א</option>
-            </select>
-
-            {/* View toggle */}
-            <div className="inline-flex rounded-lg border border-border bg-white p-0.5">
-              <ViewToggleBtn
-                active={view === "grid"}
-                onClick={() => changeView("grid")}
-                icon={<LayoutGrid className="size-4" />}
-                label="תצוגת כרטיסים"
+              <SearchModeBtn
+                active={searchMode === "title"}
+                onClick={() => setSearchMode("title")}
+                icon={<Type className="size-4" />}
+                label="שם המסמך"
               />
-              <ViewToggleBtn
-                active={view === "list"}
-                onClick={() => changeView("list")}
-                icon={<Rows3 className="size-4" />}
-                label="תצוגת רשימה"
+              <SearchModeBtn
+                active={searchMode === "content"}
+                onClick={() => setSearchMode("content")}
+                icon={<ScanText className="size-4" />}
+                label="תוכן המסמך"
               />
             </div>
+
+            {searchMode === "title" && (
+              <>
+                <select
+                  value={fileType}
+                  onChange={(e) => setFileType(e.target.value)}
+                  className="rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+                  aria-label="סינון לפי סוג קובץ"
+                >
+                  <option value="all">כל סוגי הקבצים</option>
+                  {fileTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                  className="rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+                  aria-label="מיון"
+                >
+                  <option value="created_desc">חדש לישן</option>
+                  <option value="created_asc">ישן לחדש</option>
+                  <option value="title_asc">שם א—ת</option>
+                  <option value="title_desc">שם ת—א</option>
+                </select>
+
+                {/* View toggle */}
+                <div className="inline-flex rounded-lg border border-border bg-white p-0.5">
+                  <ViewToggleBtn
+                    active={view === "grid"}
+                    onClick={() => changeView("grid")}
+                    icon={<LayoutGrid className="size-4" />}
+                    label="תצוגת כרטיסים"
+                  />
+                  <ViewToggleBtn
+                    active={view === "list"}
+                    onClick={() => changeView("list")}
+                    icon={<Rows3 className="size-4" />}
+                    label="תצוגת רשימה"
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* Active filters chip row */}
-        {hasActiveFilters && !loading && (
+        {searchMode === "title" && hasActiveFilters && !loading && (
           <div className="mb-4 flex items-center gap-2 text-xs text-muted flex-wrap">
             <Filter className="size-3.5" />
             <span>
@@ -339,7 +374,14 @@ function LibraryInner() {
         )}
 
         {/* Documents area */}
-        {loading ? (
+        {searchMode === "content" ? (
+          <ContentSearchPanel
+            categoryId={selectedCat}
+            query={search}
+            onView={handleView}
+            onDownload={handleDownload}
+          />
+        ) : loading ? (
           <SkeletonGrid view={view} />
         ) : docs.length === 0 ? (
           <EmptyState hasActiveFilters={hasActiveFilters} onReset={resetFilters} />
@@ -481,6 +523,33 @@ function ViewToggleBtn({
       }`}
     >
       {icon}
+    </button>
+  );
+}
+
+function SearchModeBtn({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md text-sm font-medium transition ${
+        active
+          ? "bg-accent text-white shadow-sm"
+          : "text-muted hover:text-foreground hover:bg-accent-soft/60"
+      }`}
+    >
+      {icon}
+      {label}
     </button>
   );
 }

@@ -29,6 +29,12 @@ export type DocumentWithCategory = DocumentItem & {
   category: Pick<DocumentCategory, "id" | "name" | "color"> | null;
 };
 
+export type ContentSearchHit = {
+  doc: DocumentWithCategory;
+  // Paragraphs of the document's read text that contain the query.
+  paragraphs: string[];
+};
+
 export type UploadResult = {
   fileName: string;
   ok: boolean;

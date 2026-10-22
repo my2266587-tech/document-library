@@ -31,6 +31,8 @@ create table if not exists documents_library (
   patient_id          uuid,
   uploaded_by         text,
   is_archived         boolean     not null default false,
+  content_text        text,
+  content_indexed_at  timestamptz,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
