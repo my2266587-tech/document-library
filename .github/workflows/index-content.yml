@@ -13,8 +13,6 @@ on:
   schedule:
     - cron: "17 */4 * * *" # every 4 hours
   workflow_dispatch: {} # manual run from the Actions tab
-  push: # TEMP: test run before merge
-    branches: [feature/content-search-all]
 
 concurrency:
   group: index-content
@@ -36,4 +34,4 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           INDEX_TIME_LIMIT_MIN: "320"
-        run: npx tsx scripts/zz-diag.mts # TEMP diagnostic
+        run: npm run index:content
