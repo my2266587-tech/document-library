@@ -1,0 +1,37 @@
+name: Index document text
+
+# Reads the text of new documents (PDFs and images) so the "תוכן המסמך"
+# search can find sentences inside them. Each document is read once; a run
+# with nothing new finishes in about a minute.
+#
+# Uses the same secrets as supabase-keepalive.yml:
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#
+# This repository is public, so the job logs only ids and counts.
+
+on:
+  schedule:
+    - cron: "17 */4 * * *" # every 4 hours
+  workflow_dispatch: {} # manual run from the Actions tab
+
+concurrency:
+  group: index-content
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Read document text
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INDEX_TIME_LIMIT_MIN: "320"
+        run: npm run index:content

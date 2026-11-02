@@ -31,8 +31,10 @@ export type DocumentWithCategory = DocumentItem & {
 
 export type ContentSearchHit = {
   doc: DocumentWithCategory;
-  // Paragraphs of the document's read text that contain the query.
+  // Places in the document's read text that contain the query (excerpts, first few only).
   paragraphs: string[];
+  // How many places matched in total.
+  totalPlaces: number;
 };
 
 export type UploadResult = {

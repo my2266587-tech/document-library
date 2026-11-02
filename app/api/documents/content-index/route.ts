@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DOCUMENTS_BUCKET, getSupabaseAdmin } from "@/lib/supabase/admin";
-import { CONTENT_INDEXED_TYPES, contentDbErrorMessage } from "@/lib/content-search";
+import { IMAGE_CONTENT_TYPES, contentDbErrorMessage } from "@/lib/content-search";
 import { createOcrWorker, readImageText } from "@/lib/ocr-server";
 
 export const runtime = "nodejs";
@@ -13,7 +13,8 @@ const TIME_BUDGET_MS = 35_000;
 const BATCH_SIZE = 40;
 
 // Reads (OCR) the text of images that were not read yet and stores it, so
-// the content search can find sentences inside them.
+// the content search can find sentences inside them. PDFs are read by the
+// scheduled job (scripts/index-content.ts).
 export async function POST(req: NextRequest) {
   const started = Date.now();
   try {
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
       .select("id, file_path", { count: "exact" })
       .eq("is_archived", false)
       .is("content_indexed_at", null)
-      .in("file_type", CONTENT_INDEXED_TYPES)
+      .in("file_type", IMAGE_CONTENT_TYPES)
       .order("id", { ascending: true });
     if (categoryId !== "all") query = query.eq("category_id", categoryId);
 
