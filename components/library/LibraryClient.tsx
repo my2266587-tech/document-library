@@ -26,6 +26,7 @@ import UploadManyModal from "./UploadManyModal";
 import ManageCategoriesModal from "./ManageCategoriesModal";
 import EditDocumentModal from "./EditDocumentModal";
 import ContentSearchPanel from "./ContentSearchPanel";
+import VoiceSearchButton from "./VoiceSearchButton";
 import { ToastProvider, useToast } from "./Toast";
 import { parseApiResponse, formatBytes } from "@/lib/utils";
 import { colorForName } from "@/lib/category-color";
@@ -51,6 +52,7 @@ function LibraryInner() {
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("title");
+  const [listening, setListening] = useState(false);
   const [fileType, setFileType] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("created_desc");
   const [loading, setLoading] = useState(true);
@@ -272,18 +274,21 @@ function LibraryInner() {
         {/* Toolbar */}
         <div className="mb-4 bg-surface border border-border rounded-2xl p-2.5 flex flex-col md:flex-row md:items-center gap-2.5">
           <div className="relative flex-1 min-w-0">
-            <Search className="absolute end-3 top-1/2 -translate-y-1/2 size-4 text-muted pointer-events-none" />
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted pointer-events-none" />
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={
-                searchMode === "content"
+                listening
+                  ? "מקשיבה… דברי עכשיו"
+                  : searchMode === "content"
                   ? "חיפוש משפט בתוך המסמכים…"
                   : "חיפוש לפי שם מסמך…"
               }
-              className="w-full rounded-lg border border-border bg-white pe-9 ps-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+              className="w-full rounded-lg border border-border bg-white ps-9 pe-11 py-2 text-sm [&::-webkit-search-cancel-button]:hidden focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
             />
+            <VoiceSearchButton onText={setSearch} onListeningChange={setListening} />
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">

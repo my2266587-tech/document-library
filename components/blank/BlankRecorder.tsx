@@ -19,45 +19,8 @@ import {
 } from "lucide-react";
 import { uploadFileWithProgress } from "@/lib/upload-client";
 import { parseApiResponse } from "@/lib/utils";
+import { getSpeechRecognitionCtor, type SpeechRecognitionLike } from "@/lib/speech";
 import { embedBlankData, readBlankData, recognizeBlankImage, type BlankData } from "@/lib/blank-image";
-
-// ---------------------------------------------------------------------------
-// Minimal ambient typing for the Web Speech API (not in lib.dom.d.ts).
-// ---------------------------------------------------------------------------
-interface SpeechRecognitionAlternativeLike {
-  transcript: string;
-}
-interface SpeechRecognitionResultLike {
-  isFinal: boolean;
-  0: SpeechRecognitionAlternativeLike;
-}
-interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: ArrayLike<SpeechRecognitionResultLike>;
-}
-interface SpeechRecognitionErrorEventLike {
-  error: string;
-}
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-}
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
-
-function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
 
 // ---------------------------------------------------------------------------
 // Sentence color cycling — dark, mutually distinct hues on white paper.
