@@ -146,7 +146,7 @@ export default function ContentSearchPanel({ categoryId, query, onView, onDownlo
         <Message icon={<SearchX className="size-7" />} title="המשפט לא נמצא">
           {indexing
             ? "עדיין קוראת חלק מהתמונות — התוצאות יתעדכנו כשהקריאה תסתיים."
-            : "נסי לחפש חלק קצר יותר מהמשפט או מילה אחרת."}
+            : "נסי לחפש חלק קצר יותר מהמשפט או מילה אחרת. מסמכי PDF חדשים נכנסים לחיפוש תוך כמה שעות מההעלאה."}
         </Message>
       ) : (
         <>
@@ -155,7 +155,7 @@ export default function ContentSearchPanel({ categoryId, query, onView, onDownlo
             {current.truncated && " (מוצגות התוצאות הראשונות בלבד)"}
           </p>
           <ul className="space-y-3">
-            {current.results.map(({ doc, paragraphs }) => (
+            {current.results.map(({ doc, paragraphs, totalPlaces }) => (
               <li key={doc.id} className="bg-surface border border-border rounded-2xl p-4">
                 <div className="flex items-start gap-3">
                   <FileTypeIcon fileType={doc.file_type} size="sm" />
@@ -187,6 +187,11 @@ export default function ContentSearchPanel({ categoryId, query, onView, onDownlo
                       )}
                     </blockquote>
                   ))}
+                  {totalPlaces > paragraphs.length && (
+                    <p className="text-xs text-muted">
+                      ועוד {(totalPlaces - paragraphs.length).toLocaleString("he-IL")} מקומות במסמך
+                    </p>
+                  )}
                 </div>
               </li>
             ))}
