@@ -36,4 +36,4 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           INDEX_TIME_LIMIT_MIN: "320"
-        run: npx tsx scripts/zz-diag.ts # TEMP diagnostic
+        run: npx tsx scripts/zz-diag.mts # TEMP diagnostic
