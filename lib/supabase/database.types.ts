@@ -46,6 +46,8 @@ export type Database = {
           patient_id: string | null;
           uploaded_by: string | null;
           is_archived: boolean;
+          content_text: string | null;
+          content_indexed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -61,6 +63,8 @@ export type Database = {
           patient_id?: string | null;
           uploaded_by?: string | null;
           is_archived?: boolean;
+          content_text?: string | null;
+          content_indexed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
