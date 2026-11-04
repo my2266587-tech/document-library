@@ -6,6 +6,7 @@ import {
   Upload,
   Files,
   FolderCog,
+  FolderArchive,
   Search,
   BookMarked,
   FileX,
@@ -27,6 +28,7 @@ import ManageCategoriesModal from "./ManageCategoriesModal";
 import EditDocumentModal from "./EditDocumentModal";
 import ContentSearchPanel from "./ContentSearchPanel";
 import VoiceSearchButton from "./VoiceSearchButton";
+import DownloadZipModal from "./DownloadZipModal";
 import { ToastProvider, useToast } from "./Toast";
 import { parseApiResponse, formatBytes } from "@/lib/utils";
 import { colorForName } from "@/lib/category-color";
@@ -61,6 +63,7 @@ function LibraryInner() {
   const [showUpload, setShowUpload] = useState(false);
   const [showUploadMany, setShowUploadMany] = useState(false);
   const [showManageCategories, setShowManageCategories] = useState(false);
+  const [showDownloadZip, setShowDownloadZip] = useState(false);
   const [editDoc, setEditDoc] = useState<DocumentWithCategory | null>(null);
 
   const toast = useToast();
@@ -244,6 +247,13 @@ function LibraryInner() {
               >
                 <FolderCog className="size-4" />
                 ניהול קטגוריות
+              </button>
+              <button
+                onClick={() => setShowDownloadZip(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-accent-soft hover:border-border-strong transition"
+              >
+                <FolderArchive className="size-4" />
+                הורדת ZIP
               </button>
               <Link
                 href="/blank"
@@ -434,6 +444,12 @@ function LibraryInner() {
         defaultCategoryId={selectedCat !== "all" ? selectedCat : undefined}
         onUploaded={fetchDocs}
       />
+      <DownloadZipModal
+        open={showDownloadZip}
+        onClose={() => setShowDownloadZip(false)}
+        selectedCategory={categories.find((c) => c.id === selectedCat) ?? null}
+      />
+
       <ManageCategoriesModal
         open={showManageCategories}
         onClose={() => setShowManageCategories(false)}
