@@ -5,6 +5,7 @@ import Modal from "./Modal";
 import { FolderPlus, Trash2, Lock } from "lucide-react";
 import type { DocumentCategory } from "@/lib/types";
 import { useToast } from "./Toast";
+import { useConfirm } from "./ConfirmDialog";
 import { parseApiResponse } from "@/lib/utils";
 import { PROTECTED_CATEGORY_NAMES } from "@/lib/constants";
 
@@ -25,6 +26,7 @@ export default function ManageCategoriesModal({
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const toast = useToast();
+  const confirm = useConfirm();
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +55,13 @@ export default function ManageCategoriesModal({
   }
 
   async function handleDelete(cat: DocumentCategory) {
-    if (!confirm(`בטוחה למחוק את הקטגוריה "${cat.name}"?`)) return;
+    const ok = await confirm({
+      title: `למחוק את הקטגוריה "${cat.name}"?`,
+      message: "אפשר למחוק רק קטגוריה ריקה, בלי מסמכים.",
+      confirmLabel: "מחיקה",
+      danger: true,
+    });
+    if (!ok) return;
     setDeletingId(cat.id);
     try {
       const res = await fetch(`/api/document-categories/${cat.id}`, {
@@ -73,6 +81,30 @@ export default function ManageCategoriesModal({
   return (
     <Modal open={open} onClose={onClose} title="ניהול קטגוריות" widthClass="max-w-xl">
       <div className="space-y-5">
+        {/* Add */}
+        <section>
+          <h3 className="text-sm font-semibold text-foreground mb-2">
+            הוספת קטגוריה
+          </h3>
+          <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="שם הקטגוריה החדשה"
+              className="flex-1 min-h-11 rounded-lg border border-border bg-white px-3 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+            />
+            <button
+              type="submit"
+              disabled={adding}
+              className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition disabled:opacity-60 whitespace-nowrap"
+            >
+              <FolderPlus className="size-4" />
+              {adding ? "מוסיף…" : "הוסף קטגוריה"}
+            </button>
+          </form>
+        </section>
+
         {/* List */}
         <section>
           <h3 className="text-sm font-semibold text-foreground mb-2">
@@ -107,11 +139,11 @@ export default function ManageCategoriesModal({
                       <button
                         onClick={() => handleDelete(cat)}
                         disabled={isDeleting}
-                        className="inline-flex items-center gap-1.5 text-sm text-[var(--danger)] hover:bg-[var(--danger-soft)] px-2 py-1 rounded-md transition disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 min-h-11 text-sm text-danger hover:bg-danger-soft px-3 rounded-lg transition disabled:opacity-50"
                         aria-label={`מחיקת קטגוריה ${cat.name}`}
                       >
                         <Trash2 className="size-4" />
-                        {isDeleting ? "מוחק…" : "מחק"}
+                        {isDeleting ? "מוחק…" : "מחיקה"}
                       </button>
                     )}
                   </li>
@@ -121,35 +153,11 @@ export default function ManageCategoriesModal({
           )}
         </section>
 
-        {/* Add */}
-        <section>
-          <h3 className="text-sm font-semibold text-foreground mb-2">
-            הוספת קטגוריה
-          </h3>
-          <form onSubmit={handleAdd} className="flex gap-2">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="שם הקטגוריה החדשה"
-              className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-            />
-            <button
-              type="submit"
-              disabled={adding}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition disabled:opacity-60 whitespace-nowrap"
-            >
-              <FolderPlus className="size-4" />
-              {adding ? "מוסיף…" : "הוסף קטגוריה"}
-            </button>
-          </form>
-        </section>
-
         <div className="flex justify-end pt-2 border-t border-border">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-accent-soft transition"
+            className="min-h-11 px-4 rounded-lg border border-border text-foreground hover:bg-accent-soft transition"
           >
             סגירה
           </button>

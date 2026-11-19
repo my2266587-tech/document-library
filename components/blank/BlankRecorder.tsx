@@ -22,6 +22,7 @@ import { uploadFileWithProgress } from "@/lib/upload-client";
 import { parseApiResponse } from "@/lib/utils";
 import { getSpeechRecognitionCtor, type SpeechRecognitionLike } from "@/lib/speech";
 import { embedBlankData, readBlankData, recognizeBlankImage, type BlankData } from "@/lib/blank-image";
+import { ConfirmProvider, useConfirm } from "@/components/library/ConfirmDialog";
 
 // ---------------------------------------------------------------------------
 // Sentence color cycling — dark, mutually distinct hues on white paper.
@@ -65,6 +66,15 @@ const LIBRARY_CATEGORY_NAME = "משפטי חיזוק";
 let nextId = 1;
 
 export default function BlankRecorder() {
+  return (
+    <ConfirmProvider>
+      <BlankRecorderInner />
+    </ConfirmProvider>
+  );
+}
+
+function BlankRecorderInner() {
+  const confirm = useConfirm();
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [manualText, setManualText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -119,8 +129,14 @@ export default function BlankRecorder() {
     setSentences((prev) => prev.slice(0, -1));
   }
 
-  function clearAll() {
-    setSentences([]);
+  async function clearAll() {
+    const ok = await confirm({
+      title: "לנקות את כל המשפטים מהבלאנק?",
+      message: "כל המשפטים שעל הבלאנק יימחקו.",
+      confirmLabel: "ניקוי הכל",
+      danger: true,
+    });
+    if (ok) setSentences([]);
   }
 
   function decreaseFontSize() {
@@ -442,7 +458,14 @@ export default function BlankRecorder() {
   // Hebrew OCR, and the recognized sentences are then fixed by hand.
   async function openImagesForEditing(files: File[]) {
     if (busy || files.length === 0) return;
-    if (sentences.length > 0 && !confirm("לפתוח את התמונה במקום המשפטים שכבר על הבלאנק?")) {
+    if (
+      sentences.length > 0 &&
+      !(await confirm({
+        title: "לפתוח את התמונה במקום המשפטים שכבר על הבלאנק?",
+        message: "המשפטים שעל הבלאנק עכשיו יוחלפו במשפטים מהתמונה.",
+        confirmLabel: "פתיחת התמונה",
+      }))
+    ) {
       return;
     }
     setBusy("open");
@@ -730,7 +753,7 @@ export default function BlankRecorder() {
               type="button"
               onClick={toggleMic}
               disabled={!micSupported}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-white shadow-sm transition ${
+              className={`inline-flex items-center gap-2 min-h-12 px-5 rounded-xl font-medium text-white shadow-sm transition ${
                 recording ? "bg-danger hover:bg-danger/90" : "bg-accent hover:bg-accent-hover"
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
@@ -760,7 +783,7 @@ export default function BlankRecorder() {
               }}
               placeholder="אפשר גם להקליד משפט וללחוץ Enter…"
               maxLength={200}
-              className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+              className="flex-1 min-w-0 min-h-11 rounded-lg border border-border bg-white px-3 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
             />
             <button
               type="button"
@@ -768,7 +791,7 @@ export default function BlankRecorder() {
                 addSentence(manualText);
                 setManualText("");
               }}
-              className="px-4 py-2 rounded-lg bg-accent-soft text-accent-hover font-medium border border-border hover:bg-accent hover:text-white hover:border-accent transition"
+              className="min-h-11 px-4 rounded-lg bg-accent-soft text-accent-hover font-medium border border-border hover:bg-accent hover:text-white hover:border-accent transition"
             >
               הוספה
             </button>
@@ -781,7 +804,7 @@ export default function BlankRecorder() {
                 type="button"
                 onClick={() => setPageMode("full")}
                 aria-pressed={pageMode === "full"}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                className={`min-h-10 px-3 rounded-md text-sm font-medium transition ${
                   pageMode === "full" ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground"
                 }`}
               >
@@ -791,7 +814,7 @@ export default function BlankRecorder() {
                 type="button"
                 onClick={() => setPageMode("card")}
                 aria-pressed={pageMode === "card"}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                className={`min-h-10 px-3 rounded-md text-sm font-medium transition ${
                   pageMode === "card" ? "bg-accent text-white shadow-sm" : "text-muted hover:text-foreground"
                 }`}
               >
@@ -808,7 +831,7 @@ export default function BlankRecorder() {
                 onClick={decreaseFontSize}
                 disabled={fontSize <= FONT_SIZE_MIN}
                 aria-label="הקטנת גופן"
-                className="inline-flex items-center justify-center size-7 rounded-md text-muted hover:text-foreground hover:bg-accent-soft/60 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center size-10 rounded-md text-muted hover:text-foreground hover:bg-accent-soft/60 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Minus className="size-4" />
               </button>
@@ -818,7 +841,7 @@ export default function BlankRecorder() {
                 onClick={increaseFontSize}
                 disabled={fontSize >= FONT_SIZE_MAX}
                 aria-label="הגדלת גופן"
-                className="inline-flex items-center justify-center size-7 rounded-md text-muted hover:text-foreground hover:bg-accent-soft/60 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center size-10 rounded-md text-muted hover:text-foreground hover:bg-accent-soft/60 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus className="size-4" />
               </button>
@@ -830,7 +853,7 @@ export default function BlankRecorder() {
               type="button"
               onClick={undoLast}
               disabled={sentences.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-muted border border-border hover:text-foreground hover:border-border-strong transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-sm text-muted border border-border hover:text-foreground hover:border-border-strong transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Undo2 className="size-4" />
               ביטול אחרון
@@ -839,7 +862,7 @@ export default function BlankRecorder() {
               type="button"
               onClick={clearAll}
               disabled={sentences.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-muted border border-border hover:text-danger hover:border-danger/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-sm text-muted border border-border hover:text-danger hover:border-danger/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Trash2 className="size-4" />
               ניקוי הכל
@@ -861,7 +884,7 @@ export default function BlankRecorder() {
               type="button"
               onClick={() => openImageInputRef.current?.click()}
               disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ImageUp className="size-4" />
               {busy === "open" ? "פותח תמונה…" : "פתיחת תמונה לעריכה"}
@@ -869,7 +892,7 @@ export default function BlankRecorder() {
             <button
               type="button"
               onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition"
+              className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition"
             >
               <Printer className="size-4" />
               הדפסה / PDF
@@ -878,7 +901,7 @@ export default function BlankRecorder() {
               type="button"
               onClick={downloadImages}
               disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-sm text-accent-hover border border-accent/40 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ImageDown className="size-4" />
               {busy === "download" ? "מכין תמונה…" : "הורדה כתמונה"}
@@ -887,7 +910,7 @@ export default function BlankRecorder() {
               type="button"
               onClick={saveImagesToLibrary}
               disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white bg-accent hover:bg-accent-hover shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-sm font-medium text-white bg-accent hover:bg-accent-hover shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="size-4" />
               {busy === "save" ? "שומר…" : "שמירה בספרייה"}

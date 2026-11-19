@@ -51,7 +51,7 @@ export default function Modal({
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted hover:bg-accent-soft hover:text-foreground transition"
+            className="inline-flex items-center justify-center size-11 -me-2 rounded-lg text-muted hover:bg-accent-soft hover:text-foreground transition"
             aria-label="סגירה"
           >
             <X className="size-5" />

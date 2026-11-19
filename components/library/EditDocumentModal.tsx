@@ -109,7 +109,7 @@ export default function EditDocumentModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-accent-soft transition"
+            className="min-h-11 px-4 rounded-lg border border-border text-foreground hover:bg-accent-soft transition"
             disabled={busy}
           >
             ביטול
@@ -117,7 +117,7 @@ export default function EditDocumentModal({
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition disabled:opacity-60"
+            className="min-h-11 inline-flex items-center gap-2 px-5 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition disabled:opacity-60"
           >
             <Save className="size-4" />
             {busy ? "שומר…" : "שמירה"}
@@ -129,7 +129,7 @@ export default function EditDocumentModal({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition";
+  "w-full min-h-11 rounded-lg border border-border bg-white px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition";
 
 function Field({
   label,
