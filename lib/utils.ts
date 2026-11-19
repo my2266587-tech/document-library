@@ -1,10 +1,14 @@
+const LRI = String.fromCodePoint(0x2066); // left-to-right isolate
+const PDI = String.fromCodePoint(0x2069); // end of isolate
+
 export function formatBytes(bytes: number | null | undefined): string {
   if (!bytes && bytes !== 0) return "—";
-  if (bytes === 0) return "0 B";
+  // Wrapped in left-to-right isolate marks so "888.5 KB" isn't flipped to "KB 888.5" in Hebrew text.
+  if (bytes === 0) return `${LRI}0 B${PDI}`;
   const k = 1024;
   const units = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1);
-  return `${(bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  return `${LRI}${(bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}${PDI}`;
 }
 
 export function formatDate(iso: string | null | undefined): string {

@@ -13,9 +13,11 @@ import {
   Rows3,
   X,
   Mic,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import type { DocumentCategory, DocumentWithCategory } from "@/lib/types";
-import CategoryTabs from "./CategoryTabs";
+import { CategorySelect, CategorySidebar } from "./CategoryTabs";
 import DocumentCard from "./DocumentCard";
 import DocumentRow, { DocumentRowHeader } from "./DocumentRow";
 import UploadManyModal from "./UploadManyModal";
@@ -53,6 +55,8 @@ function LibraryInner() {
   const [sort, setSort] = useState<SortKey>("created_desc");
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("grid");
+  const [loadError, setLoadError] = useState(false);
+  const [counts, setCounts] = useState<Record<string, number> | undefined>(undefined);
 
   const [showUpload, setShowUpload] = useState(false);
   const [showManageCategories, setShowManageCategories] = useState(false);
@@ -96,6 +100,7 @@ function LibraryInner() {
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     const params = new URLSearchParams();
     if (selectedCat !== "all") params.set("category_id", selectedCat);
     if (query) params.set("q", query);
@@ -104,7 +109,14 @@ function LibraryInner() {
     try {
       const res = await fetch(`/api/documents?${params.toString()}`, { cache: "no-store" });
       const data = await parseApiResponse<{ documents?: DocumentWithCategory[] }>(res);
-      setDocs(data.documents ?? []);
+      const list = data.documents ?? [];
+      setDocs(list);
+      // The full, unfiltered list tells how many documents each category has.
+      if (selectedCat === "all" && !query) {
+        const next: Record<string, number> = { all: list.length };
+        for (const d of list) if (d.category_id) next[d.category_id] = (next[d.category_id] ?? 0) + 1;
+        setCounts(next);
+      }
     } catch (err) {
       console.error("[fetchDocs] error", err);
       toast.show(
@@ -112,6 +124,7 @@ function LibraryInner() {
         `שגיאה בטעינת מסמכים: ${err instanceof Error ? err.message : "שגיאה לא ידועה"}`
       );
       setDocs([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -185,7 +198,7 @@ function LibraryInner() {
 
   const docList =
     view === "grid" ? (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {docs.map((doc) => (
           <DocumentCard
             key={doc.id}
@@ -213,60 +226,74 @@ function LibraryInner() {
       </div>
     );
 
+  const currentCat = selectedCat === "all" ? null : categories.find((c) => c.id === selectedCat) ?? null;
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
-        {/* Header */}
-        <header className="mb-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/"
-                onClick={() => {
-                  showAll();
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                aria-label="חזרה לדף הבית"
-                title="חזרה לדף הבית"
-                className="size-12 shrink-0 rounded-2xl bg-accent text-white flex items-center justify-center shadow-sm hover:bg-accent-hover transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-              >
-                <BookMarked className="size-6" />
-              </Link>
-              <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-foreground leading-tight">
-                  ספריית מסמכים
-                </h1>
-                <p className="text-muted mt-1 text-sm lg:text-base">
-                  כל המסמכים במקום אחד — מעלים, מחפשים ופותחים
-                </p>
-              </div>
-            </div>
+      {/* Top bar */}
+      <header className="sm:sticky top-0 z-30 bg-surface/95 backdrop-blur border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/"
+            onClick={() => {
+              showAll();
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            aria-label="חזרה לדף הבית"
+            title="חזרה לדף הבית"
+            className="flex items-center gap-3 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
+            <span className="size-10 shrink-0 rounded-xl bg-accent text-white flex items-center justify-center shadow-sm">
+              <BookMarked className="size-5" />
+            </span>
+            <span className="leading-tight">
+              <span className="block text-lg font-bold text-foreground">ספריית מסמכים</span>
+              <span className="hidden sm:block text-xs text-muted">כל המסמכים במקום אחד</span>
+            </span>
+          </Link>
 
-            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
-              <button
-                onClick={() => setShowUpload(true)}
-                className="inline-flex items-center justify-center gap-2 min-h-12 px-5 rounded-xl bg-accent text-white text-base font-semibold hover:bg-accent-hover transition shadow-sm"
-              >
-                <Upload className="size-5" />
-                העלאת מסמכים
-              </button>
-              <div className="grid grid-cols-3 sm:flex gap-2">
-                <HeaderLink href="/blank" icon={<Mic className="size-4" />} label="בלאנק מוקלט" />
+          <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+            <div className="grid grid-cols-3 sm:flex gap-2 order-2 sm:order-1">
+              <HeaderLink href="/blank" icon={<Mic className="size-4" />} label="בלאנק מוקלט" />
+              <div className="lg:hidden contents">
                 <HeaderButton
                   onClick={() => setShowManageCategories(true)}
                   icon={<FolderCog className="size-4" />}
                   label="קטגוריות"
                 />
-                <HeaderButton
-                  onClick={() => setShowDownloadZip(true)}
-                  icon={<FolderArchive className="size-4" />}
-                  label="הורדת הספרייה"
-                />
               </div>
+              <HeaderButton
+                onClick={() => setShowDownloadZip(true)}
+                icon={<FolderArchive className="size-4" />}
+                label="הורדת הספרייה"
+              />
             </div>
+            <button
+              onClick={() => setShowUpload(true)}
+              className="order-1 sm:order-2 inline-flex items-center justify-center gap-2 min-h-11 px-5 rounded-xl bg-accent text-white font-semibold hover:bg-accent-hover transition shadow-sm"
+            >
+              <Upload className="size-5" />
+              העלאת מסמכים
+            </button>
           </div>
-        </header>
+        </div>
+      </header>
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 lg:grid lg:grid-cols-[16.5rem_minmax(0,1fr)] lg:gap-8">
+        {/* Categories — a side list on computers */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-24">
+            <CategorySidebar
+              categories={categories}
+              selected={selectedCat}
+              onSelect={setSelectedCat}
+              counts={counts}
+              onManage={() => setShowManageCategories(true)}
+            />
+          </div>
+        </aside>
+
+        <main className="min-w-0">
         {/* Search — by name and inside the documents at once */}
         <div className="relative mb-4">
           <Search className="absolute start-4 top-1/2 -translate-y-1/2 size-5 text-muted pointer-events-none" />
@@ -276,7 +303,7 @@ function LibraryInner() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder={listening ? "מקשיבה… דברי עכשיו" : "חיפוש מסמך — לפי שם או לפי משפט מתוכו"}
             aria-label="חיפוש מסמך"
-            className="w-full min-h-13 rounded-2xl border border-border-strong bg-white ps-12 pe-24 py-3 text-base shadow-sm [&::-webkit-search-cancel-button]:hidden focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+            className="w-full min-h-13 rounded-xl border border-border-strong bg-white ps-12 pe-24 py-3 text-base shadow-[0_1px_2px_rgba(47,42,37,0.05)] [&::-webkit-search-cancel-button]:hidden focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
           />
           {search && (
             <button
@@ -292,23 +319,35 @@ function LibraryInner() {
           <VoiceSearchButton onText={setSearch} onListeningChange={setListening} />
         </div>
 
-        {/* Categories */}
-        <div className="mb-4">
-          <CategoryTabs categories={categories} selected={selectedCat} onSelect={setSelectedCat} />
+        {/* Categories — one dropdown on phones and tablets */}
+        <div className="mb-4 lg:hidden">
+          <CategorySelect categories={categories} selected={selectedCat} onSelect={setSelectedCat} />
         </div>
 
-        <SelectedCategoryBar categories={categories} selectedId={selectedCat} />
-
-        {/* Count + display options */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        {/* Where am I + how many, and display options */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {currentCat && (
+                <span
+                  className="size-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: colorForName(currentCat.name) }}
+                  aria-hidden="true"
+                />
+              )}
+              <h2 className="text-xl font-bold text-foreground truncate">
+                {currentCat ? currentCat.name : "כל המסמכים"}
+              </h2>
+            </div>
           <div className="flex flex-wrap items-center gap-x-3 text-sm text-muted">
             <span>
               {loading ? (
                 "טוען…"
               ) : (
                 <>
-                  <span className="font-semibold text-foreground">{docs.length.toLocaleString("he-IL")}</span>{" "}
+                  {docs.length.toLocaleString("he-IL")}{" "}
                   {query ? "מסמכים ששמם מתאים לחיפוש" : "מסמכים"}
+                  {currentCat?.description && ` · ${currentCat.description}`}
                 </>
               )}
             </span>
@@ -321,6 +360,7 @@ function LibraryInner() {
                 הצגת כל המסמכים
               </button>
             )}
+          </div>
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -370,6 +410,21 @@ function LibraryInner() {
               onDownload={handleDownload}
             />
           </div>
+        ) : loadError ? (
+          <div className="text-center py-14 px-4 bg-surface border border-border rounded-2xl">
+            <div className="inline-flex size-14 rounded-2xl bg-danger-soft text-danger items-center justify-center mb-3">
+              <AlertCircle className="size-7" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground">לא הצלחנו לטעון את המסמכים</h3>
+            <p className="text-sm text-muted mt-1 mb-5">ייתכן שיש בעיה רגעית בחיבור. המסמכים עצמם שמורים.</p>
+            <button
+              onClick={fetchDocs}
+              className="inline-flex items-center gap-2 min-h-11 px-5 rounded-xl bg-accent text-white font-medium hover:bg-accent-hover transition"
+            >
+              <RefreshCw className="size-4" />
+              נסי שוב
+            </button>
+          </div>
         ) : docs.length === 0 ? (
           <EmptyState
             inCategory={selectedCat !== "all"}
@@ -379,6 +434,7 @@ function LibraryInner() {
         ) : (
           docList
         )}
+        </main>
       </div>
 
       <UploadManyModal
@@ -441,37 +497,6 @@ function HeaderLink({ href, icon, label }: { href: string; icon: React.ReactNode
   );
 }
 
-function SelectedCategoryBar({
-  categories,
-  selectedId,
-}: {
-  categories: DocumentCategory[];
-  selectedId: string;
-}) {
-  if (selectedId === "all") return null;
-  const cat = categories.find((c) => c.id === selectedId);
-  if (!cat) return null;
-  const color = colorForName(cat.name);
-
-  return (
-    <div className="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-surface border border-border">
-      <span
-        className="size-2.5 rounded-full shrink-0"
-        style={{ backgroundColor: color }}
-        aria-hidden="true"
-      />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-foreground truncate">
-          {cat.name}
-        </div>
-        {cat.description && (
-          <div className="text-xs text-muted truncate">{cat.description}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ViewToggleBtn({
   active,
   onClick,
@@ -519,7 +544,7 @@ function SkeletonGrid({ view }: { view: ViewMode }) {
     );
   }
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}

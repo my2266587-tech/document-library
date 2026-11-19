@@ -4,6 +4,7 @@ import { Eye, Download, Pencil, Trash2 } from "lucide-react";
 import type { DocumentWithCategory } from "@/lib/types";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { FileTypeIcon } from "@/lib/file-icons";
+import { colorForName } from "@/lib/category-color";
 
 type Props = {
   doc: DocumentWithCategory;
@@ -15,72 +16,72 @@ type Props = {
 
 export default function DocumentCard({ doc, onView, onDownload, onEdit, onDelete }: Props) {
   return (
-    <article className="group relative bg-surface border border-border rounded-2xl p-4 shadow-[0_1px_2px_rgba(47,42,37,0.04)] hover:shadow-md hover:border-border-strong hover:-translate-y-0.5 transition flex flex-col gap-3">
-      {/* Header */}
+    <article className="group bg-surface border border-border rounded-xl shadow-[0_1px_2px_rgba(47,42,37,0.05)] hover:shadow-[0_6px_20px_rgba(47,42,37,0.08)] hover:border-border-strong transition flex flex-col">
+      {/* Name — clicking it opens the document */}
       <button
         type="button"
         onClick={onView}
-        className="flex items-start gap-3 text-start rounded-lg -m-1 p-1 hover:bg-accent-soft/40 transition"
-        title={`פתיחת ${doc.title}`}
+        className="flex items-start gap-3 text-start p-4 pb-3 rounded-t-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        title={`פתיחת ${doc.title}\n${doc.original_file_name}`}
       >
         <FileTypeIcon fileType={doc.file_type} size="md" />
-        <div className="flex-1 min-w-0">
-          <span className="block font-semibold text-foreground truncate leading-tight">
-            {doc.title}
-          </span>
-          <span
-            className="block text-xs text-muted truncate mt-0.5"
-            title={doc.original_file_name}
-          >
-            {doc.original_file_name}
-          </span>
-        </div>
+        <span className="flex-1 min-w-0 font-semibold text-foreground leading-snug line-clamp-2 min-h-[2.75em] group-hover:text-accent-hover transition">
+          {doc.title}
+        </span>
       </button>
 
-      {/* Meta row */}
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <div className="px-4 pb-3 flex flex-col gap-2 flex-1">
         {doc.category && (
-          <span className="px-2 py-0.5 rounded-full bg-accent-soft text-accent font-medium">
-            {doc.category.name}
+          <span className="inline-flex items-center gap-1.5 max-w-full text-xs font-medium text-foreground/80">
+            <span
+              className="size-2 rounded-full shrink-0"
+              style={{ backgroundColor: colorForName(doc.category.name) }}
+              aria-hidden="true"
+            />
+            <span className="truncate">{doc.category.name}</span>
           </span>
         )}
-        {doc.file_type && (
-          <span className="px-2 py-0.5 rounded-full bg-background border border-border text-muted uppercase tracking-wide font-medium">
-            {doc.file_type}
-          </span>
+
+        {doc.notes && (
+          <p className="text-sm text-muted line-clamp-2 leading-snug" title={doc.notes}>
+            {doc.notes}
+          </p>
         )}
+
+        <div className="mt-auto flex items-center gap-1.5 text-xs text-muted">
+          {doc.file_type && <span className="uppercase font-medium tracking-wide">{doc.file_type}</span>}
+          {doc.file_type && <span aria-hidden="true">·</span>}
+          <span>{formatBytes(doc.file_size)}</span>
+          <span aria-hidden="true">·</span>
+          <span>{formatDate(doc.created_at)}</span>
+        </div>
       </div>
 
-      {/* Notes */}
-      {doc.notes && (
-        <p className="text-sm text-muted line-clamp-2 leading-snug" title={doc.notes}>
-          {doc.notes}
-        </p>
-      )}
-
-      {/* Footer meta */}
-      <div className="flex items-center justify-between text-xs text-muted pt-1">
-        <span>{formatDate(doc.created_at)}</span>
-        <span>{formatBytes(doc.file_size)}</span>
-      </div>
-
-      {/* Action bar */}
-      <div className="flex items-center gap-1 pt-3 border-t border-border mt-auto">
-        <ActionBtn onClick={onView} icon={<Eye className="size-4" />} label="פתיחה" />
-        <ActionBtn onClick={onDownload} icon={<Download className="size-4" />} label="הורדה" />
-        <ActionBtn onClick={onEdit} icon={<Pencil className="size-4" />} label="עריכה" />
-        <ActionBtn
-          onClick={onDelete}
-          icon={<Trash2 className="size-4" />}
-          label="מחיקה"
-          danger
-        />
+      {/* Actions — the two everyday ones in words, editing and deleting as quiet icons */}
+      <div className="flex items-center gap-1 px-2 py-2 border-t border-border">
+        <TextBtn onClick={onView} icon={<Eye className="size-4" />} label="פתיחה" />
+        <TextBtn onClick={onDownload} icon={<Download className="size-4" />} label="הורדה" />
+        <IconBtn onClick={onEdit} icon={<Pencil className="size-4" />} label="עריכה" />
+        <IconBtn onClick={onDelete} icon={<Trash2 className="size-4" />} label="מחיקה" danger />
       </div>
     </article>
   );
 }
 
-function ActionBtn({
+function TextBtn({ onClick, icon, label }: { onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex-1 min-w-0 min-h-11 inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-medium text-foreground hover:bg-accent-soft transition"
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function IconBtn({
   onClick,
   icon,
   label,
@@ -93,16 +94,15 @@ function ActionBtn({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`flex-1 min-w-0 min-h-11 inline-flex flex-col items-center justify-center gap-0.5 rounded-lg text-xs font-medium transition ${
-        danger
-          ? "text-danger hover:bg-danger-soft"
-          : "text-foreground hover:bg-accent-soft"
-      }`}
+      aria-label={label}
       title={label}
+      className={`size-11 shrink-0 inline-flex items-center justify-center rounded-lg text-muted transition ${
+        danger ? "hover:text-danger hover:bg-danger-soft" : "hover:text-foreground hover:bg-accent-soft"
+      }`}
     >
       {icon}
-      <span>{label}</span>
     </button>
   );
 }
