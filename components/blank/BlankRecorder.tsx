@@ -16,6 +16,7 @@ import {
   Minus,
   Plus,
   ImageUp,
+  Home,
 } from "lucide-react";
 import { uploadFileWithProgress } from "@/lib/upload-client";
 import { parseApiResponse } from "@/lib/utils";
@@ -696,10 +697,11 @@ export default function BlankRecorder() {
         <header className="mb-8 print:hidden">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground transition mb-4"
+            className="inline-flex items-center gap-2 min-h-11 px-4 py-2.5 mb-5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-accent-soft hover:border-border-strong transition"
           >
             <ArrowRight className="size-4" />
-            חזרה לספרייה
+            <Home className="size-4" />
+            חזרה לדף הבית
           </Link>
           <div className="flex items-start gap-4">
             <div className="size-12 rounded-2xl bg-accent text-white flex items-center justify-center shadow-sm">
