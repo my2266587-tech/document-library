@@ -704,9 +704,14 @@ export default function BlankRecorder() {
             חזרה לדף הבית
           </Link>
           <div className="flex items-start gap-4">
-            <div className="size-12 rounded-2xl bg-accent text-white flex items-center justify-center shadow-sm">
+            <Link
+              href="/"
+              aria-label="חזרה לדף הבית"
+              title="חזרה לדף הבית"
+              className="size-12 shrink-0 rounded-2xl bg-accent text-white flex items-center justify-center shadow-sm hover:bg-accent-hover transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
               <BookMarked className="size-6" />
-            </div>
+            </Link>
             <div>
               <h1 className="text-2xl lg:text-3xl font-bold text-foreground leading-tight">
                 בלאנק מוקלט

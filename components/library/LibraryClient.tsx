@@ -206,9 +206,18 @@ function LibraryInner() {
         <header className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
             <div className="flex items-start gap-4">
-              <div className="size-12 rounded-2xl bg-accent text-white flex items-center justify-center shadow-sm">
+              <Link
+                href="/"
+                onClick={() => {
+                  resetFilters();
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                aria-label="חזרה לדף הבית"
+                title="חזרה לדף הבית"
+                className="size-12 shrink-0 rounded-2xl bg-accent text-white flex items-center justify-center shadow-sm hover:bg-accent-hover transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              >
                 <BookMarked className="size-6" />
-              </div>
+              </Link>
               <div>
                 <h1 className="text-2xl lg:text-3xl font-bold text-foreground leading-tight">
                   ספריית מסמכים
