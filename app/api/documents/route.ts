@@ -14,48 +14,58 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    let query = supabase
-      .from("documents_library")
-      .select(
-        "id, title, original_file_name, file_path, file_type, file_size, category_id, notes, patient_id, uploaded_by, is_archived, created_at, updated_at, category:document_categories(id, name, color)"
-      )
-      .eq("is_archived", false);
+    // Supabase returns at most 1,000 rows per request, so read page by page.
+    // A last sort by id keeps the pages stable.
+    const PAGE_SIZE = 1000;
+    const documents: unknown[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      let query = supabase
+        .from("documents_library")
+        .select(
+          "id, title, original_file_name, file_path, file_type, file_size, category_id, notes, patient_id, uploaded_by, is_archived, created_at, updated_at, category:document_categories(id, name, color)"
+        )
+        .eq("is_archived", false);
 
-    if (categoryId && categoryId !== "all") {
-      query = query.eq("category_id", categoryId);
-    }
-    if (search) {
-      query = query.ilike("title", `%${search}%`);
-    }
-    if (fileType && fileType !== "all") {
-      query = query.eq("file_type", fileType);
-    }
+      if (categoryId && categoryId !== "all") {
+        query = query.eq("category_id", categoryId);
+      }
+      if (search) {
+        query = query.ilike("title", `%${search}%`);
+      }
+      if (fileType && fileType !== "all") {
+        query = query.eq("file_type", fileType);
+      }
 
-    switch (sort) {
-      case "created_asc":
-        query = query.order("created_at", { ascending: true });
-        break;
-      case "title_asc":
-        query = query.order("title", { ascending: true });
-        break;
-      case "title_desc":
-        query = query.order("title", { ascending: false });
-        break;
-      case "created_desc":
-      default:
-        query = query.order("created_at", { ascending: false });
-        break;
-    }
+      switch (sort) {
+        case "created_asc":
+          query = query.order("created_at", { ascending: true });
+          break;
+        case "title_asc":
+          query = query.order("title", { ascending: true });
+          break;
+        case "title_desc":
+          query = query.order("title", { ascending: false });
+          break;
+        case "created_desc":
+        default:
+          query = query.order("created_at", { ascending: false });
+          break;
+      }
 
-    const { data, error } = await query;
-    if (error) {
-      console.error("[documents GET] supabase error:", error);
-      return NextResponse.json(
-        { error: `Database error: ${error.message}` },
-        { status: 500 }
-      );
+      const { data, error } = await query
+        .order("id", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) {
+        console.error("[documents GET] supabase error:", error);
+        return NextResponse.json(
+          { error: `Database error: ${error.message}` },
+          { status: 500 }
+        );
+      }
+      documents.push(...(data ?? []));
+      if (!data || data.length < PAGE_SIZE) break;
     }
-    return NextResponse.json({ documents: data ?? [] });
+    return NextResponse.json({ documents });
   } catch (err) {
     console.error("[documents GET] exception:", err);
     return NextResponse.json(

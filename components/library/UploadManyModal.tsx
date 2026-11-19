@@ -10,6 +10,7 @@ import {
   Loader2,
   Clock,
   SkipForward,
+  UploadCloud,
 } from "lucide-react";
 import type { DocumentCategory } from "@/lib/types";
 import { useToast } from "./Toast";
@@ -63,6 +64,8 @@ export default function UploadManyModal({
   const [items, setItems] = useState<FileItem[]>([]);
   const [categoryId, setCategoryId] = useState<string>(defaultCategoryId ?? "");
   const [notes, setNotes] = useState("");
+  const [title, setTitle] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [finished, setFinished] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -73,6 +76,7 @@ export default function UploadManyModal({
   function reset() {
     setItems([]);
     setNotes("");
+    setTitle("");
     setCategoryId(defaultCategoryId ?? "");
     setFinished(false);
     checkSeq.current++;
@@ -86,9 +90,11 @@ export default function UploadManyModal({
     onClose();
   }
 
-  async function onPickFiles(files: FileList | null) {
+  async function onPickFiles(files: FileList | File[] | null) {
     if (!files) return;
     const list = Array.from(files);
+    if (list.length === 0) return;
+    setTitle("");
     const seen = new Set<string>();
     setItems(
       list.map((f) => {
@@ -191,6 +197,8 @@ export default function UploadManyModal({
           original_file_name: file.name,
           file_type: extOf(file.name) || file.type?.split("/").pop() || null,
           file_size: file.size,
+          // A name typed by hand applies only when a single file is uploaded.
+          title: (items.length === 1 && title.trim()) || undefined,
           category_id: categoryId || undefined,
           notes: notes.trim() || undefined,
         }),
@@ -247,7 +255,13 @@ export default function UploadManyModal({
 
     const skipped = skipCount ? ` · דולגו ${skipCount} שכבר קיימים` : "";
     if (failCount === 0) {
-      toast.show("success", `הועלו ${okCount} קבצים בהצלחה${skipped}`);
+      toast.show(
+        "success",
+        okCount === 1 ? `המסמך הועלה בהצלחה${skipped}` : `הועלו ${okCount} מסמכים בהצלחה${skipped}`
+      );
+      // Everything went up — nothing left to look at, so close by itself.
+      reset();
+      onClose();
     } else if (okCount === 0) {
       toast.show("error", `כל הקבצים נכשלו (${failCount})${skipped}`);
     } else {
@@ -266,25 +280,61 @@ export default function UploadManyModal({
     : 0;
 
   return (
-    <Modal open={open} onClose={closeAll} title="העלאה מרובה" widthClass="max-w-xl">
+    <Modal open={open} onClose={closeAll} title="העלאת מסמכים" widthClass="max-w-xl">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="קבצים" required>
-          <input
-            type="file"
-            multiple
-            onChange={(e) => onPickFiles(e.target.files)}
-            className="block w-full text-sm file:me-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-accent file:text-white file:font-medium hover:file:bg-accent-hover cursor-pointer"
-            required
-            disabled={busy}
-          />
-          <p className="text-xs text-muted mt-1.5">
-            {items.length > 0
-              ? `נבחרו ${items.length} קבצים · מגבלה לכל קובץ: ${MAX_FILE_SIZE_MB}MB`
-              : `מגבלה לכל קובץ: ${MAX_FILE_SIZE_MB}MB`}
-          </p>
-        </Field>
+        {canChoose && (
+          <label
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              onPickFiles(e.dataTransfer.files);
+            }}
+            className={`flex flex-col items-center justify-center gap-2 text-center px-4 py-7 rounded-2xl border-2 border-dashed cursor-pointer transition ${
+              dragOver
+                ? "border-accent bg-accent-soft"
+                : "border-border-strong bg-background hover:border-accent hover:bg-accent-soft/50"
+            }`}
+          >
+            <UploadCloud className="size-9 text-accent" />
+            <span className="font-semibold text-foreground">
+              {items.length > 0 ? "לבחירת קבצים אחרים — ללחוץ כאן" : "ללחוץ כאן לבחירת קבצים"}
+            </span>
+            <span className="text-sm text-muted">
+              או לגרור לכאן קבצים מהמחשב · אפשר קובץ אחד או כמה ביחד
+            </span>
+            <span className="text-xs text-muted">גודל מקסימלי לכל קובץ: {MAX_FILE_SIZE_MB}MB</span>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => {
+                onPickFiles(e.target.files);
+                e.target.value = "";
+              }}
+              className="sr-only"
+              disabled={busy}
+            />
+          </label>
+        )}
 
-        <Field label="קטגוריה (משותפת לכל הקבצים)">
+        {items.length === 1 && canChoose && (
+          <Field label="שם המסמך (לא חובה)">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="אם ריק — ייקח את שם הקובץ"
+              className={inputClass}
+              disabled={busy}
+            />
+          </Field>
+        )}
+
+        <Field label={items.length > 1 ? "קטגוריה (לכל הקבצים)" : "קטגוריה"}>
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
@@ -300,7 +350,7 @@ export default function UploadManyModal({
           </select>
         </Field>
 
-        <Field label="הערות כלליות (אופציונלי)">
+        <Field label="הערות (לא חובה)">
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -388,7 +438,7 @@ export default function UploadManyModal({
           <button
             type="button"
             onClick={closeAll}
-            className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-accent-soft transition disabled:opacity-60"
+            className="min-h-11 px-4 rounded-lg border border-border text-foreground hover:bg-accent-soft transition disabled:opacity-60"
             disabled={busy}
           >
             {finished ? "סגירה" : "ביטול"}
@@ -397,12 +447,14 @@ export default function UploadManyModal({
             <button
               type="submit"
               disabled={busy || checking || toUploadCount === 0}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition disabled:opacity-60"
+              className="min-h-11 inline-flex items-center gap-2 px-5 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition disabled:opacity-60"
             >
               <Files className="size-4" />
               {busy
                 ? `מעלה… ${totalPercent}%`
-                : `העלה ${toUploadCount || ""} קבצים`}
+                : toUploadCount > 1
+                ? `העלאת ${toUploadCount} מסמכים`
+                : "העלאה"}
             </button>
           )}
         </div>
@@ -562,7 +614,7 @@ function ChoiceButton({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition disabled:opacity-60";
+  "w-full min-h-11 rounded-lg border border-border bg-white px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition disabled:opacity-60";
 
 function Field({
   label,

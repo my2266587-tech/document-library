@@ -17,23 +17,25 @@ export default function DocumentCard({ doc, onView, onDownload, onEdit, onDelete
   return (
     <article className="group relative bg-surface border border-border rounded-2xl p-4 shadow-[0_1px_2px_rgba(47,42,37,0.04)] hover:shadow-md hover:border-border-strong hover:-translate-y-0.5 transition flex flex-col gap-3">
       {/* Header */}
-      <div className="flex items-start gap-3">
+      <button
+        type="button"
+        onClick={onView}
+        className="flex items-start gap-3 text-start rounded-lg -m-1 p-1 hover:bg-accent-soft/40 transition"
+        title={`פתיחת ${doc.title}`}
+      >
         <FileTypeIcon fileType={doc.file_type} size="md" />
         <div className="flex-1 min-w-0">
-          <h3
-            className="font-semibold text-foreground truncate leading-tight"
-            title={doc.title}
-          >
+          <span className="block font-semibold text-foreground truncate leading-tight">
             {doc.title}
-          </h3>
-          <p
-            className="text-xs text-muted truncate mt-0.5"
+          </span>
+          <span
+            className="block text-xs text-muted truncate mt-0.5"
             title={doc.original_file_name}
           >
             {doc.original_file_name}
-          </p>
+          </span>
         </div>
-      </div>
+      </button>
 
       {/* Meta row */}
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -64,7 +66,7 @@ export default function DocumentCard({ doc, onView, onDownload, onEdit, onDelete
 
       {/* Action bar */}
       <div className="flex items-center gap-1 pt-3 border-t border-border mt-auto">
-        <ActionBtn onClick={onView} icon={<Eye className="size-4" />} label="צפייה" />
+        <ActionBtn onClick={onView} icon={<Eye className="size-4" />} label="פתיחה" />
         <ActionBtn onClick={onDownload} icon={<Download className="size-4" />} label="הורדה" />
         <ActionBtn onClick={onEdit} icon={<Pencil className="size-4" />} label="עריכה" />
         <ActionBtn
@@ -92,15 +94,15 @@ function ActionBtn({
   return (
     <button
       onClick={onClick}
-      className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition ${
+      className={`flex-1 min-w-0 min-h-11 inline-flex flex-col items-center justify-center gap-0.5 rounded-lg text-xs font-medium transition ${
         danger
-          ? "text-[var(--danger)] hover:bg-[var(--danger-soft)]"
+          ? "text-danger hover:bg-danger-soft"
           : "text-foreground hover:bg-accent-soft"
       }`}
       title={label}
     >
       {icon}
-      <span className="hidden xl:inline">{label}</span>
+      <span>{label}</span>
     </button>
   );
 }

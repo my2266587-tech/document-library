@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Upload,
-  Files,
   FolderCog,
   FolderArchive,
   Search,
@@ -13,16 +12,12 @@ import {
   LayoutGrid,
   Rows3,
   X,
-  Filter,
   Mic,
-  ScanText,
-  Type,
 } from "lucide-react";
 import type { DocumentCategory, DocumentWithCategory } from "@/lib/types";
 import CategoryTabs from "./CategoryTabs";
 import DocumentCard from "./DocumentCard";
 import DocumentRow, { DocumentRowHeader } from "./DocumentRow";
-import UploadModal from "./UploadModal";
 import UploadManyModal from "./UploadManyModal";
 import ManageCategoriesModal from "./ManageCategoriesModal";
 import EditDocumentModal from "./EditDocumentModal";
@@ -30,21 +25,22 @@ import ContentSearchPanel from "./ContentSearchPanel";
 import VoiceSearchButton from "./VoiceSearchButton";
 import DownloadZipModal from "./DownloadZipModal";
 import { ToastProvider, useToast } from "./Toast";
-import { parseApiResponse, formatBytes } from "@/lib/utils";
+import { ConfirmProvider, useConfirm } from "./ConfirmDialog";
+import { parseApiResponse } from "@/lib/utils";
 import { colorForName } from "@/lib/category-color";
 
 export default function LibraryClient() {
   return (
     <ToastProvider>
-      <LibraryInner />
+      <ConfirmProvider>
+        <LibraryInner />
+      </ConfirmProvider>
     </ToastProvider>
   );
 }
 
 type SortKey = "created_desc" | "created_asc" | "title_asc" | "title_desc";
 type ViewMode = "grid" | "list";
-// "title" filters the document list by name; "content" finds sentences inside documents.
-type SearchMode = "title" | "content";
 
 const VIEW_STORAGE_KEY = "library:view-mode";
 
@@ -53,20 +49,18 @@ function LibraryInner() {
   const [docs, setDocs] = useState<DocumentWithCategory[]>([]);
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [searchMode, setSearchMode] = useState<SearchMode>("title");
   const [listening, setListening] = useState(false);
-  const [fileType, setFileType] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("created_desc");
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("grid");
 
   const [showUpload, setShowUpload] = useState(false);
-  const [showUploadMany, setShowUploadMany] = useState(false);
   const [showManageCategories, setShowManageCategories] = useState(false);
   const [showDownloadZip, setShowDownloadZip] = useState(false);
   const [editDoc, setEditDoc] = useState<DocumentWithCategory | null>(null);
 
   const toast = useToast();
+  const confirm = useConfirm();
 
   // Restore view preference from localStorage on mount
   useEffect(() => {
@@ -98,12 +92,13 @@ function LibraryInner() {
     }
   }, [toast]);
 
+  const query = search.trim();
+
   const fetchDocs = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (selectedCat !== "all") params.set("category_id", selectedCat);
-    if (searchMode === "title" && search.trim()) params.set("q", search.trim());
-    if (fileType !== "all") params.set("file_type", fileType);
+    if (query) params.set("q", query);
     params.set("sort", sort);
 
     try {
@@ -120,7 +115,7 @@ function LibraryInner() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCat, search, searchMode, fileType, sort, toast]);
+  }, [selectedCat, query, sort, toast]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -132,25 +127,8 @@ function LibraryInner() {
     return () => clearTimeout(t);
   }, [fetchDocs]);
 
-  const fileTypes = useMemo(() => {
-    const set = new Set<string>();
-    docs.forEach((d) => d.file_type && set.add(d.file_type));
-    return Array.from(set).sort();
-  }, [docs]);
-
-  const totalSize = useMemo(
-    () => docs.reduce((sum, d) => sum + (d.file_size ?? 0), 0),
-    [docs]
-  );
-
-  const hasActiveFilters =
-    (searchMode === "title" && search.trim() !== "") ||
-    fileType !== "all" ||
-    selectedCat !== "all";
-
-  function resetFilters() {
+  function showAll() {
     setSearch("");
-    setFileType("all");
     setSelectedCat("all");
   }
 
@@ -164,7 +142,7 @@ function LibraryInner() {
       const data = await parseApiResponse<{ url: string }>(res);
       window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      toast.show("error", err instanceof Error ? err.message : "שגיאה בצפייה");
+      toast.show("error", err instanceof Error ? err.message : "שגיאה בפתיחת המסמך");
     }
   }
 
@@ -188,7 +166,13 @@ function LibraryInner() {
   }
 
   async function handleDelete(doc: DocumentWithCategory) {
-    if (!confirm(`למחוק את "${doc.title}"? פעולה זו אינה הפיכה.`)) return;
+    const ok = await confirm({
+      title: `למחוק את "${doc.title}"?`,
+      message: "המסמך יימחק מהספרייה ולא יהיה אפשר לשחזר אותו.",
+      confirmLabel: "מחיקה",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
       await parseApiResponse(res);
@@ -199,17 +183,47 @@ function LibraryInner() {
     }
   }
 
+  const docList =
+    view === "grid" ? (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {docs.map((doc) => (
+          <DocumentCard
+            key={doc.id}
+            doc={doc}
+            onView={() => handleView(doc)}
+            onDownload={() => handleDownload(doc)}
+            onEdit={() => setEditDoc(doc)}
+            onDelete={() => handleDelete(doc)}
+          />
+        ))}
+      </div>
+    ) : (
+      <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+        <DocumentRowHeader />
+        {docs.map((doc) => (
+          <DocumentRow
+            key={doc.id}
+            doc={doc}
+            onView={() => handleView(doc)}
+            onDownload={() => handleDownload(doc)}
+            onEdit={() => setEditDoc(doc)}
+            onDelete={() => handleDelete(doc)}
+          />
+        ))}
+      </div>
+    );
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Header */}
-        <header className="mb-8">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-            <div className="flex items-start gap-4">
+        <header className="mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            <div className="flex items-center gap-4">
               <Link
                 href="/"
                 onClick={() => {
-                  resetFilters();
+                  showAll();
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 aria-label="חזרה לדף הבית"
@@ -223,232 +237,153 @@ function LibraryInner() {
                   ספריית מסמכים
                 </h1>
                 <p className="text-muted mt-1 text-sm lg:text-base">
-                  ניהול מסמכים, אבחונים וקבצים כלליים במקום אחד
+                  כל המסמכים במקום אחד — מעלים, מחפשים ופותחים
                 </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-muted">
-                  <Stat label="מסמכים" value={docs.length.toLocaleString("he-IL")} />
-                  <Dot />
-                  <Stat label="קטגוריות" value={categories.length.toLocaleString("he-IL")} />
-                  <Dot />
-                  <Stat label="נפח כולל" value={formatBytes(totalSize)} />
-                </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
               <button
                 onClick={() => setShowUpload(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-white font-medium hover:bg-accent-hover transition shadow-sm"
+                className="inline-flex items-center justify-center gap-2 min-h-12 px-5 rounded-xl bg-accent text-white text-base font-semibold hover:bg-accent-hover transition shadow-sm"
               >
-                <Upload className="size-4" />
-                העלאת מסמך
+                <Upload className="size-5" />
+                העלאת מסמכים
               </button>
-              <button
-                onClick={() => setShowUploadMany(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-accent-soft hover:border-border-strong transition"
-              >
-                <Files className="size-4" />
-                העלאה מרובה
-              </button>
-              <button
-                onClick={() => setShowManageCategories(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-accent-soft hover:border-border-strong transition"
-              >
-                <FolderCog className="size-4" />
-                ניהול קטגוריות
-              </button>
-              <button
-                onClick={() => setShowDownloadZip(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-accent-soft hover:border-border-strong transition"
-              >
-                <FolderArchive className="size-4" />
-                הורדת ZIP
-              </button>
-              <Link
-                href="/blank"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-accent-soft hover:border-border-strong transition"
-              >
-                <Mic className="size-4" />
-                בלאנק מוקלט
-              </Link>
+              <div className="grid grid-cols-3 sm:flex gap-2">
+                <HeaderLink href="/blank" icon={<Mic className="size-4" />} label="בלאנק מוקלט" />
+                <HeaderButton
+                  onClick={() => setShowManageCategories(true)}
+                  icon={<FolderCog className="size-4" />}
+                  label="קטגוריות"
+                />
+                <HeaderButton
+                  onClick={() => setShowDownloadZip(true)}
+                  icon={<FolderArchive className="size-4" />}
+                  label="הורדת הספרייה"
+                />
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Tabs */}
-        <div className="mb-3">
-          <CategoryTabs
-            categories={categories}
-            selected={selectedCat}
-            onSelect={setSelectedCat}
+        {/* Search — by name and inside the documents at once */}
+        <div className="relative mb-4">
+          <Search className="absolute start-4 top-1/2 -translate-y-1/2 size-5 text-muted pointer-events-none" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={listening ? "מקשיבה… דברי עכשיו" : "חיפוש מסמך — לפי שם או לפי משפט מתוכו"}
+            aria-label="חיפוש מסמך"
+            className="w-full min-h-13 rounded-2xl border border-border-strong bg-white ps-12 pe-24 py-3 text-base shadow-sm [&::-webkit-search-cancel-button]:hidden focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="ניקוי החיפוש"
+              title="ניקוי החיפוש"
+              className="absolute end-11 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-11 rounded-lg text-muted hover:text-foreground hover:bg-accent-soft transition"
+            >
+              <X className="size-5" />
+            </button>
+          )}
+          <VoiceSearchButton onText={setSearch} onListeningChange={setListening} />
         </div>
 
-        {/* Selected-category context bar */}
-        <SelectedCategoryBar
-          categories={categories}
-          selectedId={selectedCat}
-        />
+        {/* Categories */}
+        <div className="mb-4">
+          <CategoryTabs categories={categories} selected={selectedCat} onSelect={setSelectedCat} />
+        </div>
 
-        {/* Toolbar */}
-        <div className="mb-4 bg-surface border border-border rounded-2xl p-2.5 flex flex-col md:flex-row md:items-center gap-2.5">
-          <div className="relative flex-1 min-w-0">
-            <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted pointer-events-none" />
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={
-                listening
-                  ? "מקשיבה… דברי עכשיו"
-                  : searchMode === "content"
-                  ? "חיפוש משפט בתוך המסמכים…"
-                  : "חיפוש לפי שם מסמך…"
-              }
-              className="w-full rounded-lg border border-border bg-white ps-9 pe-11 py-2 text-sm [&::-webkit-search-cancel-button]:hidden focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-            />
-            <VoiceSearchButton onText={setSearch} onListeningChange={setListening} />
-          </div>
+        <SelectedCategoryBar categories={categories} selectedId={selectedCat} />
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <div
-              className="inline-flex rounded-lg border border-border bg-white p-0.5"
-              role="group"
-              aria-label="סוג חיפוש"
-            >
-              <SearchModeBtn
-                active={searchMode === "title"}
-                onClick={() => setSearchMode("title")}
-                icon={<Type className="size-4" />}
-                label="שם המסמך"
-              />
-              <SearchModeBtn
-                active={searchMode === "content"}
-                onClick={() => setSearchMode("content")}
-                icon={<ScanText className="size-4" />}
-                label="תוכן המסמך"
-              />
-            </div>
-
-            {searchMode === "title" && (
-              <>
-                <select
-                  value={fileType}
-                  onChange={(e) => setFileType(e.target.value)}
-                  className="rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-                  aria-label="סינון לפי סוג קובץ"
-                >
-                  <option value="all">כל סוגי הקבצים</option>
-                  {fileTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {t.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as SortKey)}
-                  className="rounded-lg border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
-                  aria-label="מיון"
-                >
-                  <option value="created_desc">חדש לישן</option>
-                  <option value="created_asc">ישן לחדש</option>
-                  <option value="title_asc">שם א—ת</option>
-                  <option value="title_desc">שם ת—א</option>
-                </select>
-
-                {/* View toggle */}
-                <div className="inline-flex rounded-lg border border-border bg-white p-0.5">
-                  <ViewToggleBtn
-                    active={view === "grid"}
-                    onClick={() => changeView("grid")}
-                    icon={<LayoutGrid className="size-4" />}
-                    label="תצוגת כרטיסים"
-                  />
-                  <ViewToggleBtn
-                    active={view === "list"}
-                    onClick={() => changeView("list")}
-                    icon={<Rows3 className="size-4" />}
-                    label="תצוגת רשימה"
-                  />
-                </div>
-              </>
+        {/* Count + display options */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 text-sm text-muted">
+            <span>
+              {loading ? (
+                "טוען…"
+              ) : (
+                <>
+                  <span className="font-semibold text-foreground">{docs.length.toLocaleString("he-IL")}</span>{" "}
+                  {query ? "מסמכים ששמם מתאים לחיפוש" : "מסמכים"}
+                </>
+              )}
+            </span>
+            {(query || selectedCat !== "all") && (
+              <button
+                onClick={showAll}
+                className="inline-flex items-center gap-1 min-h-11 text-accent hover:text-accent-hover font-medium"
+              >
+                <X className="size-4" />
+                הצגת כל המסמכים
+              </button>
             )}
           </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="min-h-11 rounded-lg border border-border bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition"
+              aria-label="סדר המסמכים"
+            >
+              <option value="created_desc">החדשים קודם</option>
+              <option value="created_asc">הישנים קודם</option>
+              <option value="title_asc">לפי שם (א׳–ת׳)</option>
+              <option value="title_desc">לפי שם (ת׳–א׳)</option>
+            </select>
+            <div className="inline-flex rounded-lg border border-border bg-white p-0.5" role="group" aria-label="תצוגה">
+              <ViewToggleBtn
+                active={view === "grid"}
+                onClick={() => changeView("grid")}
+                icon={<LayoutGrid className="size-4" />}
+                label="כרטיסים"
+              />
+              <ViewToggleBtn
+                active={view === "list"}
+                onClick={() => changeView("list")}
+                icon={<Rows3 className="size-4" />}
+                label="רשימה"
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Active filters chip row */}
-        {searchMode === "title" && hasActiveFilters && !loading && (
-          <div className="mb-4 flex items-center gap-2 text-xs text-muted flex-wrap">
-            <Filter className="size-3.5" />
-            <span>
-              {docs.length === 0
-                ? "אין תוצאות תואמות לסינון הנוכחי"
-                : `מציג ${docs.length.toLocaleString("he-IL")} תוצאות`}
-            </span>
-            <button
-              onClick={resetFilters}
-              className="inline-flex items-center gap-1 text-accent hover:text-accent-hover font-medium"
-            >
-              <X className="size-3.5" />
-              נקה סינון
-            </button>
-          </div>
-        )}
-
-        {/* Documents area */}
-        {searchMode === "content" ? (
-          <ContentSearchPanel
-            categoryId={selectedCat}
-            query={search}
-            onView={handleView}
-            onDownload={handleDownload}
-          />
-        ) : loading ? (
+        {/* Documents */}
+        {loading ? (
           <SkeletonGrid view={view} />
+        ) : query ? (
+          <div className="space-y-8">
+            {docs.length > 0 ? (
+              docList
+            ) : (
+              <p className="text-sm text-muted bg-surface border border-dashed border-border-strong rounded-2xl px-4 py-5 text-center">
+                אין מסמך שהשם שלו מתאים ל״{query}״
+              </p>
+            )}
+            <ContentSearchPanel
+              categoryId={selectedCat}
+              query={search}
+              onView={handleView}
+              onDownload={handleDownload}
+            />
+          </div>
         ) : docs.length === 0 ? (
-          <EmptyState hasActiveFilters={hasActiveFilters} onReset={resetFilters} />
-        ) : view === "grid" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {docs.map((doc) => (
-              <DocumentCard
-                key={doc.id}
-                doc={doc}
-                onView={() => handleView(doc)}
-                onDownload={() => handleDownload(doc)}
-                onEdit={() => setEditDoc(doc)}
-                onDelete={() => handleDelete(doc)}
-              />
-            ))}
-          </div>
+          <EmptyState
+            inCategory={selectedCat !== "all"}
+            onUpload={() => setShowUpload(true)}
+            onShowAll={showAll}
+          />
         ) : (
-          <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-            <DocumentRowHeader />
-            {docs.map((doc) => (
-              <DocumentRow
-                key={doc.id}
-                doc={doc}
-                onView={() => handleView(doc)}
-                onDownload={() => handleDownload(doc)}
-                onEdit={() => setEditDoc(doc)}
-                onDelete={() => handleDelete(doc)}
-              />
-            ))}
-          </div>
+          docList
         )}
       </div>
 
-      <UploadModal
+      <UploadManyModal
         open={showUpload}
         onClose={() => setShowUpload(false)}
-        categories={categories}
-        defaultCategoryId={selectedCat !== "all" ? selectedCat : undefined}
-        onUploaded={fetchDocs}
-      />
-      <UploadManyModal
-        open={showUploadMany}
-        onClose={() => setShowUploadMany(false)}
         categories={categories}
         defaultCategoryId={selectedCat !== "all" ? selectedCat : undefined}
         onUploaded={fetchDocs}
@@ -485,6 +420,27 @@ function LibraryInner() {
   );
 }
 
+const secondaryBtnClass =
+  "inline-flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-h-12 px-2 sm:px-4 rounded-xl bg-surface border border-border text-foreground text-xs sm:text-sm font-medium text-center hover:bg-accent-soft hover:border-border-strong transition";
+
+function HeaderButton({ onClick, icon, label }: { onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button onClick={onClick} className={secondaryBtnClass}>
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function HeaderLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+  return (
+    <Link href={href} className={secondaryBtnClass}>
+      {icon}
+      {label}
+    </Link>
+  );
+}
+
 function SelectedCategoryBar({
   categories,
   selectedId,
@@ -492,13 +448,13 @@ function SelectedCategoryBar({
   categories: DocumentCategory[];
   selectedId: string;
 }) {
-  if (selectedId === "all") return <div className="mb-5" />;
+  if (selectedId === "all") return null;
   const cat = categories.find((c) => c.id === selectedId);
-  if (!cat) return <div className="mb-5" />;
+  if (!cat) return null;
   const color = colorForName(cat.name);
 
   return (
-    <div className="mb-5 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-surface border border-border">
+    <div className="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-surface border border-border">
       <span
         className="size-2.5 rounded-full shrink-0"
         style={{ backgroundColor: color }}
@@ -516,19 +472,6 @@ function SelectedCategoryBar({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex items-baseline gap-1">
-      <span className="font-semibold text-foreground">{value}</span>
-      <span>{label}</span>
-    </span>
-  );
-}
-
-function Dot() {
-  return <span className="size-1 rounded-full bg-border-strong" aria-hidden="true" />;
-}
-
 function ViewToggleBtn({
   active,
   onClick,
@@ -543,36 +486,8 @@ function ViewToggleBtn({
   return (
     <button
       onClick={onClick}
-      aria-label={label}
       aria-pressed={active}
-      title={label}
-      className={`inline-flex items-center justify-center size-8 rounded-md transition ${
-        active
-          ? "bg-accent text-white shadow-sm"
-          : "text-muted hover:text-foreground hover:bg-accent-soft/60"
-      }`}
-    >
-      {icon}
-    </button>
-  );
-}
-
-function SearchModeBtn({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md text-sm font-medium transition ${
+      className={`inline-flex items-center justify-center gap-1.5 min-h-10 px-3 rounded-md text-sm font-medium transition ${
         active
           ? "bg-accent text-white shadow-sm"
           : "text-muted hover:text-foreground hover:bg-accent-soft/60"
@@ -630,34 +545,40 @@ function SkeletonGrid({ view }: { view: ViewMode }) {
 }
 
 function EmptyState({
-  hasActiveFilters,
-  onReset,
+  inCategory,
+  onUpload,
+  onShowAll,
 }: {
-  hasActiveFilters: boolean;
-  onReset: () => void;
+  inCategory: boolean;
+  onUpload: () => void;
+  onShowAll: () => void;
 }) {
   return (
-    <div className="text-center py-16 bg-surface border border-dashed border-border-strong rounded-2xl">
+    <div className="text-center py-14 px-4 bg-surface border border-dashed border-border-strong rounded-2xl">
       <div className="inline-flex size-14 rounded-2xl bg-accent-soft text-accent items-center justify-center mb-3">
         <FileX className="size-7" />
       </div>
       <h3 className="text-lg font-semibold text-foreground">
-        {hasActiveFilters ? "אין תוצאות תואמות" : "אין מסמכים להצגה"}
+        {inCategory ? "אין עדיין מסמכים בקטגוריה הזו" : "אין עדיין מסמכים בספרייה"}
       </h3>
-      <p className="text-sm text-muted mt-1 mb-4">
-        {hasActiveFilters
-          ? "נסי לשנות את מסנני החיפוש או להתחיל מחדש"
-          : "התחילי בהעלאת מסמך חדש"}
-      </p>
-      {hasActiveFilters && (
+      <p className="text-sm text-muted mt-1 mb-5">אפשר להעלות מסמך עכשיו</p>
+      <div className="flex flex-wrap justify-center gap-2">
         <button
-          onClick={onReset}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition"
+          onClick={onUpload}
+          className="inline-flex items-center gap-2 min-h-11 px-5 rounded-xl bg-accent text-white font-medium hover:bg-accent-hover transition"
         >
-          <X className="size-4" />
-          נקה את כל הסינונים
+          <Upload className="size-4" />
+          העלאת מסמכים
         </button>
-      )}
+        {inCategory && (
+          <button
+            onClick={onShowAll}
+            className="inline-flex items-center gap-2 min-h-11 px-5 rounded-xl border border-border text-foreground hover:bg-accent-soft transition"
+          >
+            הצגת כל המסמכים
+          </button>
+        )}
+      </div>
     </div>
   );
 }
